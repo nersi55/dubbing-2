@@ -1,0 +1,7 @@
+google-api-python-client
+pydub
+pysrt
+streamlit
+tqdm
+youtube_transcript_api
+yt-dlp
