@@ -1,5 +1,5 @@
-# Python Dependencies for Auto Video Dubbing
-# وابستگی‌های Python برای دوبله خودکار ویدیو
+# Streamlit Cloud Requirements
+# وابستگی‌های Streamlit Cloud
 
 # Core Dependencies
 streamlit>=1.28.0
@@ -14,19 +14,12 @@ openai-whisper>=20231117
 ffmpeg-python>=0.2.0
 moviepy>=1.0.3
 
-# API Dependencies
-fastapi>=0.104.1
-uvicorn[standard]>=0.24.0
-pydantic>=2.5.0
-python-multipart>=0.0.6
-
 # Additional Dependencies
 requests>=2.31.0
 pathlib2>=2.3.7
 typing-extensions>=4.8.0
 
-# System Requirements (install separately):
-# پیش‌نیازهای سیستم (جداگانه نصب کنید):
-# - FFmpeg: https://ffmpeg.org/download.html
-# - Rubberband: https://breakfastquay.com/rubberband/
-# - Vazirmatn Font: python install_fonts.py
+# System Requirements (installed automatically in Streamlit Cloud):
+# پیش‌نیازهای سیستم (خودکار در Streamlit Cloud نصب می‌شود):
+# - FFmpeg: Available in Streamlit Cloud
+# - Vazirmatn Font: Will be installed via install_fonts.py
