@@ -8,7 +8,6 @@ import subprocess
 import sys
 import time
 import threading
-import signal
 import os
 
 def run_api():
@@ -34,21 +33,13 @@ def run_streamlit():
             sys.executable, "-m", "streamlit", "run", "simple_app.py",
             "--server.port", "8580",
             "--server.address", "0.0.0.0",
-            "--browser.gatherUsageStats", "false"
+            "--browser.gatherUsageStats", "false",
+            "--server.fileWatcherType", "none"  # غیرفعال کردن file watcher
         ])
     except Exception as e:
         print(f"❌ خطا در Streamlit: {e}")
 
-def signal_handler(sig, frame):
-    """مدیریت signal برای توقف برنامه"""
-    print("\n⏹️  در حال توقف برنامه...")
-    os._exit(0)
-
 if __name__ == "__main__":
-    # تنظیم signal handler
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
     print("🚀 در حال اجرای API و Streamlit...")
     print("📱 API: http://0.0.0.0:8003")
     print("📱 Streamlit: http://0.0.0.0:8580")
