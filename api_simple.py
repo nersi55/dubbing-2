@@ -284,19 +284,3 @@ async def get_config():
         "output_type": OUTPUT_TYPE
     }
 
-if __name__ == "__main__":
-    import uvicorn
-    print("🚀 در حال اجرای API دوبله خودکار ویدیو...")
-    print("📱 API در آدرس: http://127.0.0.1:8002")
-    print("📚 مستندات: http://127.0.0.1:8002/docs")
-    print("⏹️  برای توقف: Ctrl+C")
-    print("-" * 50)
-    
-    uvicorn.run(
-        "api_simple:app",
-        # host="127.0.0.1",
-        host="0.0.0.0",
-        port=8003,
-        reload=False,
-        log_level="info"
-    )
