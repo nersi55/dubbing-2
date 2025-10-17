@@ -1,3 +1,6 @@
+# Python Dependencies for Auto Video Dubbing
+# وابستگی‌های Python برای دوبله خودکار ویدیو
+
 streamlit>=1.28.0
 google-genai>=0.3.0
 yt-dlp>=2023.12.30
@@ -13,3 +16,9 @@ yt-dlp
 pysrt
 moviepy
 pydub
+
+# System Requirements (install separately):
+# پیش‌نیازهای سیستم (جداگانه نصب کنید):
+# - FFmpeg: https://ffmpeg.org/download.html
+# - Rubberband: https://breakfastquay.com/rubberband/
+# - Vazirmatn Font: python install_fonts.py

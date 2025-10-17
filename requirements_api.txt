@@ -1,4 +1,13 @@
+# API Dependencies for Auto Video Dubbing
+# وابستگی‌های API برای دوبله خودکار ویدیو
+
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
 python-multipart==0.0.6
+
+# System Requirements (install separately):
+# پیش‌نیازهای سیستم (جداگانه نصب کنید):
+# - FFmpeg: https://ffmpeg.org/download.html
+# - Rubberband: https://breakfastquay.com/rubberband/
+# - Vazirmatn Font: python install_fonts.py

@@ -40,7 +40,48 @@ def check_dependencies():
         print("   - Ubuntu: sudo apt install rubberband-cli")
         return False
     
+    # بررسی فونت Vazirmatn
+    if not check_vazirmatn_font():
+        print("⚠️  فونت Vazirmatn یافت نشد. برای نصب خودکار:")
+        print("   python install_fonts.py")
+        print("   یا دستی از https://github.com/rastikerdar/vazirmatn دانلود کنید")
+    
     return True
+
+def check_vazirmatn_font():
+    """بررسی وجود فونت Vazirmatn"""
+    import platform
+    system = platform.system().lower()
+    
+    font_dirs = []
+    if system == "windows":
+        font_dirs = [
+            os.path.expanduser("~/AppData/Local/Microsoft/Windows/Fonts"),
+            os.path.expanduser("~/Fonts"),
+            "C:/Windows/Fonts"
+        ]
+    elif system == "darwin":  # macOS
+        font_dirs = [
+            os.path.expanduser("~/Library/Fonts"),
+            "/Library/Fonts",
+            "/System/Library/Fonts"
+        ]
+    else:  # Linux
+        font_dirs = [
+            os.path.expanduser("~/.fonts"),
+            os.path.expanduser("~/.local/share/fonts"),
+            "/usr/share/fonts/truetype",
+            "/usr/local/share/fonts"
+        ]
+    
+    for font_dir in font_dirs:
+        if os.path.exists(font_dir):
+            for font_file in os.listdir(font_dir):
+                if "vazirmatn" in font_file.lower() and font_file.endswith(".ttf"):
+                    print("✅ فونت Vazirmatn یافت شد")
+                    return True
+    
+    return False
 
 def install_requirements():
     """نصب وابستگی‌های Python"""

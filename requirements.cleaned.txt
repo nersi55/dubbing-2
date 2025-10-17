@@ -1,3 +1,6 @@
+# Cleaned Python Dependencies for Auto Video Dubbing
+# وابستگی‌های پاک شده Python برای دوبله خودکار ویدیو
+
 google-api-python-client
 pydub
 pysrt
@@ -5,3 +8,9 @@ streamlit
 tqdm
 youtube_transcript_api
 yt-dlp
+
+# System Requirements (install separately):
+# پیش‌نیازهای سیستم (جداگانه نصب کنید):
+# - FFmpeg: https://ffmpeg.org/download.html
+# - Rubberband: https://breakfastquay.com/rubberband/
+# - Vazirmatn Font: python install_fonts.py

@@ -67,6 +67,19 @@ if %errorlevel% neq 0 (
 )
 echo ✅ Rubberband نصب است
 
+REM نصب فونت Vazirmatn
+echo 🎨 نصب فونت Vazirmatn...
+if exist "install_fonts.py" (
+    python install_fonts.py
+    if %errorlevel% equ 0 (
+        echo ✅ فونت Vazirmatn نصب شد
+    ) else (
+        echo ⚠️  خطا در نصب فونت. لطفاً دستی نصب کنید
+    )
+) else (
+    echo ⚠️  فایل install_fonts.py یافت نشد
+)
+
 echo.
 echo 🎉 نصب کامل شد!
 echo 🚀 برای اجرای برنامه: python run.py

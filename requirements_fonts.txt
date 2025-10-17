@@ -1,0 +1,17 @@
+# Font Installation Requirements
+# وابستگی‌های نصب فونت
+
+# This file lists the Python packages needed for font installation
+# این فایل شامل پکیج‌های Python مورد نیاز برای نصب فونت است
+
+# Core packages for font installation script
+# پکیج‌های اصلی برای اسکریپت نصب فونت
+urllib3>=1.26.0
+requests>=2.25.0
+
+# Optional: For font validation and processing
+# اختیاری: برای اعتبارسنجی و پردازش فونت
+fonttools>=4.0.0
+
+# Note: Vazirmatn font itself is downloaded and installed by install_fonts.py
+# توجه: فونت Vazirmatn خود توسط install_fonts.py دانلود و نصب می‌شود

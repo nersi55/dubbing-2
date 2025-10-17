@@ -18,7 +18,8 @@
 1. **Python 3.8+**
 2. **FFmpeg** - برای پردازش ویدیو
 3. **Rubberband** - برای تنظیم سرعت صدا
-4. **کلید Google API** - از [Google AI Studio](https://aistudio.google.com/)
+4. **Vazirmatn Font** - فونت فارسی برای زیرنویس‌ها
+5. **کلید Google API** - از [Google AI Studio](https://aistudio.google.com/)
 
 ### نصب FFmpeg و Rubberband
 
@@ -35,6 +36,37 @@ brew install ffmpeg rubberband
 ```bash
 sudo apt update
 sudo apt install ffmpeg rubberband-cli
+```
+
+### نصب فونت Vazirmatn
+
+فونت Vazirmatn برای نمایش صحیح متن فارسی در زیرنویس‌ها ضروری است.
+
+#### روش خودکار (توصیه شده):
+```bash
+python install_fonts.py
+```
+
+#### روش دستی:
+
+##### Windows:
+1. دانلود فونت از [GitHub Vazirmatn](https://github.com/rastikerdar/vazirmatn/releases)
+2. استخراج فایل‌های TTF از پوشه `fonts/ttf`
+3. نصب فونت‌ها با کلیک راست → "Install"
+
+##### macOS:
+```bash
+# دانلود و نصب خودکار
+curl -L https://github.com/rastikerdar/vazirmatn/releases/latest/download/vazirmatn.zip -o vazirmatn.zip
+unzip vazirmatn.zip
+cp fonts/ttf/*.ttf ~/Library/Fonts/
+rm -rf vazirmatn.zip fonts/
+```
+
+##### Ubuntu/Debian:
+```bash
+# نصب از پکیج رسمی
+sudo apt install fonts-vazirmatn
 ```
 
 ### اجرای برنامه

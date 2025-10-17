@@ -94,6 +94,23 @@ else
     echo "❌ Python3 نصب نیست"
 fi
 
+# نصب فونت Vazirmatn
+echo "🎨 نصب فونت Vazirmatn..."
+if command -v python3 &> /dev/null; then
+    if [[ -f "install_fonts.py" ]]; then
+        python3 install_fonts.py
+        if [[ $? -eq 0 ]]; then
+            echo "✅ فونت Vazirmatn نصب شد"
+        else
+            echo "⚠️  خطا در نصب فونت. لطفاً دستی نصب کنید"
+        fi
+    else
+        echo "⚠️  فایل install_fonts.py یافت نشد"
+    fi
+else
+    echo "❌ Python3 نصب نیست - نمی‌توان فونت را نصب کرد"
+fi
+
 echo ""
 echo "🎉 نصب کامل شد!"
 echo "🚀 برای اجرای برنامه: python run.py"
