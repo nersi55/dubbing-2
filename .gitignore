@@ -4,7 +4,19 @@ __pycache__/
 *.so
 .env
 .venv/
+venv/
 build/
 dist/
 *.egg-info/
 .DS_Store
+
+# Project specific
+dubbing_work/
+temp/
+*.wav
+*.mp4
+*.srt
+*.zip
+
+# Fonts (keep local fonts in repo for server deployment)
+# fonts/ is intentionally not ignored to ensure server compatibility

@@ -103,7 +103,33 @@ class VazirmatnInstaller:
             ]
     
     def install_fonts(self, ttf_files):
-        """نصب فونت‌ها در سیستم"""
+        """نصب فونت‌ها در سیستم و پوشه محلی پروژه"""
+        # اولویت اول: نصب در پوشه محلی پروژه
+        local_fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
+        
+        try:
+            os.makedirs(local_fonts_dir, exist_ok=True)
+            self.print_status(f"نصب فونت‌ها در پوشه محلی: {local_fonts_dir}", "info")
+            
+            local_installed = 0
+            for ttf_file in ttf_files:
+                try:
+                    target_path = os.path.join(local_fonts_dir, ttf_file.name)
+                    shutil.copy2(ttf_file, target_path)
+                    self.fonts_installed.append(target_path)
+                    local_installed += 1
+                    self.print_status(f"نصب شد (محلی): {ttf_file.name}", "success")
+                except Exception as e:
+                    self.print_status(f"خطا در نصب محلی {ttf_file.name}: {e}", "error")
+            
+            if local_installed > 0:
+                self.print_status("فونت‌ها با موفقیت در پوشه محلی نصب شدند", "success")
+                return True
+                
+        except Exception as e:
+            self.print_status(f"خطا در ایجاد پوشه محلی: {e}", "error")
+        
+        # اولویت دوم: نصب در سیستم (برای سازگاری)
         font_dirs = self.get_font_directories()
         
         # پیدا کردن اولین مسیر قابل نوشتن
@@ -121,7 +147,7 @@ class VazirmatnInstaller:
             self.print_status("هیچ مسیر قابل نوشتن برای فونت‌ها یافت نشد", "error")
             return False
         
-        self.print_status(f"نصب فونت‌ها در: {target_dir}", "info")
+        self.print_status(f"نصب فونت‌ها در سیستم: {target_dir}", "info")
         
         installed_count = 0
         for ttf_file in ttf_files:
@@ -130,9 +156,9 @@ class VazirmatnInstaller:
                 shutil.copy2(ttf_file, target_path)
                 self.fonts_installed.append(target_path)
                 installed_count += 1
-                self.print_status(f"نصب شد: {ttf_file.name}", "success")
+                self.print_status(f"نصب شد (سیستم): {ttf_file.name}", "success")
             except Exception as e:
-                self.print_status(f"خطا در نصب {ttf_file.name}: {e}", "error")
+                self.print_status(f"خطا در نصب سیستم {ttf_file.name}: {e}", "error")
         
         return installed_count > 0
     
@@ -140,7 +166,15 @@ class VazirmatnInstaller:
         """بررسی نصب فونت‌ها"""
         self.print_status("بررسی نصب فونت‌ها...", "info")
         
-        # بررسی وجود فایل‌های فونت
+        # اولویت اول: بررسی فونت‌های محلی پروژه
+        local_fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
+        if os.path.exists(local_fonts_dir):
+            for font_file in os.listdir(local_fonts_dir):
+                if "vazirmatn" in font_file.lower() and font_file.endswith(".ttf"):
+                    self.print_status(f"فونت محلی یافت شد: {os.path.join(local_fonts_dir, font_file)}", "success")
+                    return True
+        
+        # اولویت دوم: بررسی فونت‌های سیستم
         font_dirs = self.get_font_directories()
         vazirmatn_found = False
         
@@ -149,7 +183,7 @@ class VazirmatnInstaller:
                 for font_file in os.listdir(font_dir):
                     if "vazirmatn" in font_file.lower() and font_file.endswith(".ttf"):
                         vazirmatn_found = True
-                        self.print_status(f"فونت یافت شد: {os.path.join(font_dir, font_file)}", "success")
+                        self.print_status(f"فونت سیستم یافت شد: {os.path.join(font_dir, font_file)}", "success")
                         break
                 if vazirmatn_found:
                     break

@@ -53,6 +53,19 @@ def check_vazirmatn_font():
     import platform
     system = platform.system().lower()
     
+    # اولویت اول: بررسی فونت‌های محلی پروژه
+    local_fonts = [
+        "fonts/Vazirmatn-Regular.ttf",
+        "fonts/Vazirmatn-Medium.ttf", 
+        "fonts/Vazirmatn-Bold.ttf"
+    ]
+    
+    for font_path in local_fonts:
+        if os.path.exists(font_path):
+            print("✅ فونت Vazirmatn یافت شد (محلی)")
+            return True
+    
+    # اولویت دوم: بررسی فونت‌های سیستم
     font_dirs = []
     if system == "windows":
         font_dirs = [
@@ -78,7 +91,7 @@ def check_vazirmatn_font():
         if os.path.exists(font_dir):
             for font_file in os.listdir(font_dir):
                 if "vazirmatn" in font_file.lower() and font_file.endswith(".ttf"):
-                    print("✅ فونت Vazirmatn یافت شد")
+                    print("✅ فونت Vazirmatn یافت شد (سیستم)")
                     return True
     
     return False

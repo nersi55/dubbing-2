@@ -1613,9 +1613,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             import os
             system = platform.system()
             
-            # مسیرهای فونت‌های مختلف - اولویت با فونت‌های فارسی
+            # مسیرهای فونت‌های مختلف - اولویت با فونت‌های محلی پروژه
             font_paths = {
                 "vazirmatn": [
+                    # اولویت اول: فونت‌های محلی پروژه
+                    os.path.join(os.path.dirname(__file__), "fonts", "Vazirmatn-Regular.ttf"),
+                    os.path.join(os.path.dirname(__file__), "fonts", "Vazirmatn-Medium.ttf"),
+                    os.path.join(os.path.dirname(__file__), "fonts", "Vazirmatn-Bold.ttf"),
+                    os.path.join(os.path.dirname(__file__), "fonts", "Vazirmatn-ExtraBold.ttf"),
+                    os.path.join(os.path.dirname(__file__), "fonts", "Vazirmatn-Black.ttf"),
+                    # اولویت دوم: فونت‌های سیستم
                     os.path.expanduser("~/Library/Fonts/Vazirmatn-Regular.ttf"),
                     os.path.expanduser("~/Library/Fonts/Vazirmatn-Medium.ttf"),
                     os.path.expanduser("~/Library/Fonts/Vazirmatn-Bold.ttf"),
