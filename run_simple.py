@@ -21,7 +21,8 @@ def main():
         subprocess.run([
             sys.executable, "-m", "streamlit", "run", "simple_app.py",
             "--server.port", "8580",
-            "--server.address", "localhost",
+        #    "--server.address", "localhost",
+            "--server.address", "0.0.0.0",
             "--browser.gatherUsageStats", "false"
         ])
         

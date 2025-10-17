@@ -286,24 +286,16 @@ async def get_config():
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-    
     print("🚀 در حال اجرای API دوبله خودکار ویدیو...")
     print("📱 API در آدرس: http://127.0.0.1:8002")
     print("📚 مستندات: http://127.0.0.1:8002/docs")
     print("⏹️  برای توقف: Ctrl+C")
     print("-" * 50)
     
-    # تنظیمات برای محیط‌های مختلف
-    host = os.getenv("HOST", "127.0.0.1")
-    port = int(os.getenv("PORT", "8002"))
-    reload = os.getenv("RELOAD", "false").lower() == "true"
-    
     uvicorn.run(
         "api_simple:app",
-        host=host,
-        port=port,
-        reload=reload,
-        log_level="info",
-        access_log=True
+        host="127.0.0.1",
+        port=8002,
+        reload=True,
+        log_level="info"
     )
