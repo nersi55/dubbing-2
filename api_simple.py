@@ -296,7 +296,7 @@ if __name__ == "__main__":
         "api_simple:app",
         # host="127.0.0.1",
         host="0.0.0.0",
-        port=8002,
+        port=8003,
         reload=False,
         log_level="info"
     )
