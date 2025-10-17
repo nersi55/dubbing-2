@@ -162,3 +162,32 @@ dubing/
 ---
 
 **نکته**: این برنامه برای استفاده آموزشی و شخصی طراحی شده است. لطفاً قوانین کپی‌رایت و استفاده منصفانه را رعایت کنید.
+
+
+
+
+دسنرسی به API
+cd /Users/nersibayat/Desktop/Programing/VScode/dubing-2 && source venv/bin/activate && python run_api.py
+
+
+
+آدرس‌های دسترسی:
+صفحه وب: http://localhost:8580
+API: http://127.0.0.1:8002
+مستندات API: http://127.0.0.1:8002/docs
+
+
+
+# بررسی وضعیت API
+curl http://127.0.0.1:8002/health
+
+# شروع پردازش ویدیو
+curl -X POST "http://127.0.0.1:8002/process" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://youtube.com/watch?v=VIDEO_ID"}'
+
+
+
+
+
+**نکته**: این برنامه برای استفاده آموزشی و شخصی طراحی شده است. لطفاً قوانین کپی‌رایت و استفاده منصفانه را رعایت کنید.
