@@ -149,12 +149,17 @@ class VideoDubbingApp:
                     cookies_path = cookie_file
                     break
             
+            # بررسی کوکی‌ها و تست اعتبار آن‌ها
             if cookies_path:
-                if cookies_path.endswith('.txt') or cookies_path.endswith('.text'):
-                    video_opts['cookiefile'] = cookies_path
-                elif cookies_path.endswith('.json'):
-                    video_opts['cookiefile'] = cookies_path
-                print(f"🍪 استفاده از فایل کوکی: {cookies_path}")
+                # تست کوکی‌ها قبل از استفاده
+                if self._test_cookies_validity(cookies_path):
+                    if cookies_path.endswith('.txt') or cookies_path.endswith('.text'):
+                        video_opts['cookiefile'] = cookies_path
+                    elif cookies_path.endswith('.json'):
+                        video_opts['cookiefile'] = cookies_path
+                    print(f"🍪 استفاده از فایل کوکی معتبر: {cookies_path}")
+                else:
+                    print("⚠️ کوکی‌ها منقضی شده‌اند، استفاده بدون کوکی")
             else:
                 print("🌐 استفاده از تنظیمات سرور لینوکس (بدون کوکی)")
             
@@ -193,55 +198,122 @@ class VideoDubbingApp:
     def _fallback_download(self, url: str) -> bool:
         """دانلود با تنظیمات جایگزین در صورت شکست"""
         try:
-            print("🔄 تلاش با تنظیمات جایگزین...")
+            print("🔄 تلاش با تنظیمات جایگزین (بدون کوکی)...")
             
-            format_option = 'best[height<=720]/best'
+            format_option = 'worst[height<=480]/worst'
             temp_filename = str(self.work_dir / 'temp_video.%(ext)s')
             
-            # تنظیمات ساده‌تر
-            video_opts = {
-                'format': format_option,
-                'outtmpl': temp_filename,
-                'nocheckcertificate': True,
-                'ignoreerrors': True,
-                'no_warnings': True,
-                'quiet': True,
-                'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-                'referer': 'https://www.youtube.com/',
-                'socket_timeout': 60,
-                'retries': 1,
-            }
+            # تنظیمات بدون کوکی و با User-Agent های مختلف
+            fallback_configs = [
+                {
+                    'name': 'Googlebot',
+                    'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                    'format': 'worst[height<=360]/worst'
+                },
+                {
+                    'name': 'Chrome Linux',
+                    'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'format': 'worst[height<=480]/worst'
+                },
+                {
+                    'name': 'Firefox Linux',
+                    'user_agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/121.0',
+                    'format': 'worst'
+                }
+            ]
             
-            with yt_dlp.YoutubeDL(video_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                downloaded_file = ydl.prepare_filename(info)
+            for config in fallback_configs:
+                try:
+                    print(f"   🧪 تست {config['name']}...")
+                    
+                    video_opts = {
+                        'format': config['format'],
+                        'outtmpl': temp_filename,
+                        'nocheckcertificate': True,
+                        'ignoreerrors': True,
+                        'no_warnings': True,
+                        'quiet': True,
+                        'user_agent': config['user_agent'],
+                        'referer': 'https://www.youtube.com/',
+                        'socket_timeout': 30,
+                        'retries': 1,
+                        'fragment_retries': 1,
+                        'extractor_retries': 1,
+                        'http_chunk_size': 1048576,  # 1MB chunks
+                    }
+                    
+                    with yt_dlp.YoutubeDL(video_opts) as ydl:
+                        info = ydl.extract_info(url, download=True)
+                        if info is None:
+                            print(f"   ❌ {config['name']} شکست خورد")
+                            continue
+                        downloaded_file = ydl.prepare_filename(info)
+                    
+                    if os.path.exists(downloaded_file):
+                        _, file_extension = os.path.splitext(downloaded_file)
+                        final_filename = self.work_dir / f'input_video{file_extension}'
+                        os.rename(downloaded_file, str(final_filename))
+                        
+                        if file_extension.lower() != '.mp4':
+                            mp4_path = self.work_dir / 'input_video.mp4'
+                            subprocess.run([
+                                'ffmpeg', '-i', str(final_filename), 
+                                '-c', 'copy', str(mp4_path), '-y'
+                            ], check=True, capture_output=True)
+                            final_filename.unlink()
+                        
+                        # Extract audio
+                        audio_path = self.work_dir / 'audio.wav'
+                        subprocess.run([
+                            'ffmpeg', '-i', str(self.work_dir / 'input_video.mp4'), 
+                            '-vn', str(audio_path), '-y'
+                        ], check=True, capture_output=True)
+                        
+                        print(f"✅ دانلود با {config['name']} موفق بود")
+                        return True
+                    else:
+                        print(f"   ❌ {config['name']} فایل دانلود نشد")
+                        
+                except Exception as e:
+                    print(f"   ❌ خطا در {config['name']}: {str(e)[:100]}...")
+                    continue
             
-            if os.path.exists(downloaded_file):
-                _, file_extension = os.path.splitext(downloaded_file)
-                final_filename = self.work_dir / f'input_video{file_extension}'
-                os.rename(downloaded_file, str(final_filename))
-                
-                if file_extension.lower() != '.mp4':
-                    mp4_path = self.work_dir / 'input_video.mp4'
-                    subprocess.run([
-                        'ffmpeg', '-i', str(final_filename), 
-                        '-c', 'copy', str(mp4_path), '-y'
-                    ], check=True, capture_output=True)
-                    final_filename.unlink()
-                
-                # Extract audio
-                audio_path = self.work_dir / 'audio.wav'
-                subprocess.run([
-                    'ffmpeg', '-i', str(self.work_dir / 'input_video.mp4'), 
-                    '-vn', str(audio_path), '-y'
-                ], check=True, capture_output=True)
-                
-                print("✅ دانلود با تنظیمات جایگزین موفق بود")
-                return True
+            print("❌ همه روش‌های جایگزین شکست خوردند")
             return False
             
         except Exception as e:
             print(f"❌ خطا در دانلود جایگزین: {str(e)}")
+            return False
+    
+    def _test_cookies_validity(self, cookies_path: str) -> bool:
+        """تست اعتبار کوکی‌ها"""
+        try:
+            print("🔍 بررسی اعتبار کوکی‌ها...")
+            
+            # تست ساده با یک URL کوتاه
+            test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            
+            test_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'cookiefile': cookies_path,
+                'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+                'referer': 'https://www.youtube.com/',
+                'socket_timeout': 10,
+                'retries': 1,
+            }
+            
+            with yt_dlp.YoutubeDL(test_opts) as ydl:
+                info = ydl.extract_info(test_url, download=False)
+                if info and 'title' in info:
+                    print("✅ کوکی‌ها معتبر هستند")
+                    return True
+                else:
+                    print("❌ کوکی‌ها منقضی شده‌اند")
+                    return False
+                    
+        except Exception as e:
+            print(f"❌ خطا در تست کوکی‌ها: {str(e)[:100]}...")
             return False
     
     def extract_transcript_from_youtube(self, url: str, language: str = "Auto-detect") -> bool:
