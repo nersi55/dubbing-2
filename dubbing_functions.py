@@ -1463,7 +1463,11 @@ SRT File:
             
             # پیدا کردن مسیر فونت
             font_path = self._get_font_path(font_name)
-            if font_path:
+            if font_path and font_name.lower() == 'vazirmatn':
+                # برای Vazirmatn از نام فونت استفاده کن نه مسیر
+                print(f"✅ فونت متن ثابت: {font_name} (فونت سیستم)")
+                # font_name را تغییر نده
+            elif font_path:
                 print(f"✅ فونت متن ثابت: {font_name} → {font_path}")
                 font_name = font_path
             else:
@@ -1644,12 +1648,29 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     os.path.join(os.path.dirname(__file__), "fonts", "Vazirmatn-Bold.ttf"),
                     os.path.join(os.path.dirname(__file__), "fonts", "Vazirmatn-ExtraBold.ttf"),
                     os.path.join(os.path.dirname(__file__), "fonts", "Vazirmatn-Black.ttf"),
-                    # اولویت دوم: فونت‌های سیستم
+                    # اولویت دوم: فونت‌های سیستم macOS
                     os.path.expanduser("~/Library/Fonts/Vazirmatn-Regular.ttf"),
                     os.path.expanduser("~/Library/Fonts/Vazirmatn-Medium.ttf"),
                     os.path.expanduser("~/Library/Fonts/Vazirmatn-Bold.ttf"),
                     os.path.expanduser("~/Library/Fonts/Vazirmatn-ExtraBold.ttf"),
                     os.path.expanduser("~/Library/Fonts/Vazirmatn-Black.ttf"),
+                    # اولویت سوم: فونت‌های سیستم Linux
+                    "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Regular.ttf",
+                    "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Medium.ttf",
+                    "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf",
+                    "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-ExtraBold.ttf",
+                    "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Black.ttf",
+                    "/usr/share/fonts/opentype/vazirmatn/Vazirmatn-Regular.ttf",
+                    "/usr/share/fonts/opentype/vazirmatn/Vazirmatn-Medium.ttf",
+                    "/usr/share/fonts/opentype/vazirmatn/Vazirmatn-Bold.ttf",
+                    "/usr/share/fonts/opentype/vazirmatn/Vazirmatn-ExtraBold.ttf",
+                    "/usr/share/fonts/opentype/vazirmatn/Vazirmatn-Black.ttf",
+                    "/usr/local/share/fonts/Vazirmatn-Regular.ttf",
+                    "/usr/local/share/fonts/Vazirmatn-Medium.ttf",
+                    "/usr/local/share/fonts/Vazirmatn-Bold.ttf",
+                    "/usr/local/share/fonts/Vazirmatn-ExtraBold.ttf",
+                    "/usr/local/share/fonts/Vazirmatn-Black.ttf",
+                    # فونت‌های جایگزین
                     "/System/Library/Fonts/SFArabic.ttf",  # فونت عربی سیستم
                     "/System/Library/Fonts/Helvetica.ttc",
                     "/System/Library/Fonts/Arial.ttf",
@@ -1703,17 +1724,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             if font_name in font_paths:
                 for path in font_paths[font_name]:
                     if os.path.exists(path):
+                        # برای Vazirmatn در Linux، نام فونت را برگردان نه مسیر
+                        if font_name.lower() == 'vazirmatn' and system == 'Linux':
+                            return "Vazirmatn"  # نام فونت سیستم
                         return path
             
             # فونت پیش‌فرض برای متن فارسی
-            default_fonts = [
-                "/System/Library/Fonts/Helvetica.ttc",
-                "/System/Library/Fonts/Arial.ttf",
-                "/Library/Fonts/Arial.ttf"
-            ]
+            if system == 'Linux':
+                default_fonts = [
+                    "Vazirmatn",  # فونت Vazirmatn در سیستم
+                    "DejaVu Sans",  # فونت‌های DejaVu که از فارسی پشتیبانی می‌کنند
+                    "Liberation Sans",
+                    "Arial",
+                    "Tahoma"
+                ]
+            else:
+                default_fonts = [
+                    "/System/Library/Fonts/Helvetica.ttc",
+                    "/System/Library/Fonts/Arial.ttf",
+                    "/Library/Fonts/Arial.ttf"
+                ]
             
             for font_path in default_fonts:
-                if os.path.exists(font_path):
+                if system == 'Linux':
+                    # در Linux، نام فونت را مستقیماً برگردان
+                    return font_path
+                elif os.path.exists(font_path):
                     return font_path
             
             return ""
