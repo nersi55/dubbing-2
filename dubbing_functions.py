@@ -118,6 +118,28 @@ class VideoDubbingApp:
                 'quiet': False
             }
             
+            # Add cookies support for YouTube authentication
+            cookies_files = ['cookies.txt', 'cookies.text', 'cookies.json']
+            cookies_path = None
+            
+            for cookie_file in cookies_files:
+                if os.path.exists(cookie_file):
+                    cookies_path = cookie_file
+                    break
+            
+            if cookies_path:
+                video_opts['cookiesfrombrowser'] = None  # Try browser cookies first
+                if cookies_path.endswith('.txt') or cookies_path.endswith('.text'):
+                    video_opts['cookiefile'] = cookies_path
+                elif cookies_path.endswith('.json'):
+                    video_opts['cookiesfrombrowser'] = None
+                    video_opts['cookiefile'] = cookies_path
+                print(f"🍪 استفاده از فایل کوکی: {cookies_path}")
+            else:
+                # Try to use browser cookies as fallback
+                video_opts['cookiesfrombrowser'] = None
+                print("🍪 تلاش برای استفاده از کوکی‌های مرورگر...")
+            
             with yt_dlp.YoutubeDL(video_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 downloaded_file = ydl.prepare_filename(info)
@@ -1337,11 +1359,7 @@ SRT File:
                 # پیدا کردن مسیر فونت
                 font_name = sub_config['font']
                 font_path = self._get_font_path(font_name)
-                if font_path and font_name.lower() == 'vazirmatn':
-                    # برای Vazirmatn از نام فونت استفاده کن نه مسیر
-                    print(f"✅ فونت زیرنویس: {font_name} (فونت سیستم)")
-                    # font_name را تغییر نده
-                elif font_path:
+                if font_path:
                     print(f"✅ فونت زیرنویس: {font_name} → {font_path}")
                     font_name = font_path
                 else:
