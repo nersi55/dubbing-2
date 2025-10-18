@@ -193,7 +193,10 @@ class VideoDubbingApp:
         except Exception as e:
             print(f"خطا در دانلود: {str(e)}")
             # تلاش با تنظیمات جایگزین
-            return self._fallback_download(url)
+            if not self._fallback_download(url):
+                # تلاش با دانلودگر پیشرفته
+                return self._advanced_download(url)
+            return True
     
     def _fallback_download(self, url: str) -> bool:
         """دانلود با تنظیمات جایگزین در صورت شکست"""
@@ -314,6 +317,31 @@ class VideoDubbingApp:
                     
         except Exception as e:
             print(f"❌ خطا در تست کوکی‌ها: {str(e)[:100]}...")
+            return False
+    
+    def _advanced_download(self, url: str) -> bool:
+        """دانلود با روش‌های پیشرفته"""
+        try:
+            print("🚀 تلاش با دانلودگر پیشرفته...")
+            
+            # Import advanced downloader
+            from advanced_youtube_downloader import AdvancedYouTubeDownloader
+            
+            downloader = AdvancedYouTubeDownloader(self.work_dir)
+            success = downloader.download_with_retry(url)
+            
+            if success:
+                print("✅ دانلودگر پیشرفته موفق بود!")
+                return True
+            else:
+                print("❌ دانلودگر پیشرفته هم شکست خورد")
+                return False
+                
+        except ImportError:
+            print("❌ دانلودگر پیشرفته در دسترس نیست")
+            return False
+        except Exception as e:
+            print(f"❌ خطا در دانلودگر پیشرفته: {str(e)}")
             return False
     
     def extract_transcript_from_youtube(self, url: str, language: str = "Auto-detect") -> bool:
