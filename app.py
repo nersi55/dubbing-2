@@ -138,6 +138,7 @@ if api_key:
     # ایجاد instance از کلاس دوبله
     try:
         dubbing_app = VideoDubbingApp(api_key)
+        st.session_state['dubbing_app'] = dubbing_app
         st.success("✅ اتصال به Google AI برقرار شد")
     except Exception as e:
         st.error(f"❌ خطا در اتصال به Google AI: {str(e)}")
@@ -156,7 +157,7 @@ if upload_method == "یوتیوب":
     if st.button("📥 دانلود ویدیو", type="primary"):
         if youtube_url:
             with st.spinner("در حال دانلود ویدیو..."):
-                success = dubbing_app.download_youtube_video(youtube_url)
+                success = st.session_state['dubbing_app'].download_youtube_video(youtube_url)
                 if success:
                     st.success("✅ ویدیو با موفقیت دانلود شد")
                     st.session_state['video_downloaded'] = True
@@ -174,7 +175,7 @@ else:  # فایل محلی
     
     if uploaded_file is not None:
         # ذخیره فایل آپلود شده
-        video_path = dubbing_app.work_dir / 'input_video.mp4'
+        video_path = st.session_state['dubbing_app'].work_dir / 'input_video.mp4'
         with open(video_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         
@@ -182,7 +183,7 @@ else:  # فایل محلی
         with st.spinner("در حال استخراج صدا..."):
             subprocess.run([
                 'ffmpeg', '-i', str(video_path), '-vn', 
-                str(dubbing_app.work_dir / 'audio.wav'), '-y'
+                str(st.session_state['dubbing_app'].work_dir / 'audio.wav'), '-y'
             ], check=True, capture_output=True)
         
         st.success("✅ فایل ویدیو آپلود و صدا استخراج شد")
@@ -201,10 +202,10 @@ if st.session_state.get('video_downloaded', False):
     if st.button("🔍 استخراج متن", type="primary"):
         with st.spinner("در حال استخراج متن..."):
             if extraction_method == "Whisper (توصیه می‌شود)":
-                success = dubbing_app.extract_audio_with_whisper()
+                success = st.session_state['dubbing_app'].extract_audio_with_whisper()
             else:  # زیرنویس یوتیوب
                 if upload_method == "یوتیوب" and youtube_url:
-                    success = dubbing_app.extract_transcript_from_youtube(youtube_url)
+                    success = st.session_state['dubbing_app'].extract_transcript_from_youtube(youtube_url)
                 else:
                     st.error("برای استفاده از زیرنویس یوتیوب، باید ویدیو را از یوتیوب دانلود کنید")
                     success = False
@@ -221,7 +222,7 @@ if st.session_state.get('text_extracted', False) and enable_compression:
     
     if st.button("📦 فشرده‌سازی دیالوگ‌ها", type="primary"):
         with st.spinner("در حال فشرده‌سازی..."):
-            success = dubbing_app.compress_srt_dialogues(merge_count)
+            success = st.session_state['dubbing_app'].compress_srt_dialogues(merge_count)
             if success:
                 st.success(f"✅ دیالوگ‌ها با گروه‌های {merge_count} تایی فشرده شدند")
             else:
@@ -233,7 +234,7 @@ if st.session_state.get('text_extracted', False):
     
     if st.button("🌐 ترجمه زیرنویس‌ها", type="primary"):
         with st.spinner("در حال ترجمه..."):
-            success = dubbing_app.translate_subtitles(target_language)
+            success = st.session_state['dubbing_app'].translate_subtitles(target_language)
             if success:
                 st.success(f"✅ زیرنویس‌ها به {target_language} ترجمه شدند")
                 st.session_state['translated'] = True
@@ -261,7 +262,7 @@ if st.session_state.get('translated', False):
     
     if st.button("🎤 تولید صدا", type="primary"):
         with st.spinner("در حال تولید صدا... این فرآیند ممکن است چند دقیقه طول بکشد"):
-            success = dubbing_app.create_audio_segments(
+            success = st.session_state['dubbing_app'].create_audio_segments(
                 voice=voice, 
                 model=tts_model, 
                 speech_prompt=speech_prompt,
@@ -274,7 +275,7 @@ if st.session_state.get('translated', False):
                 st.error("❌ خطا در تولید صدا")
 
 # مرحله 6: انتخاب نوع خروجی
-if st.session_state.get('translated', False):
+if st.session_state.get('translated', False) and 'dubbing_app' in st.session_state:
     st.markdown('<h2 class="step-header">🎬 مرحله 6: انتخاب نوع خروجی</h2>', unsafe_allow_html=True)
     
     # انتخاب نوع خروجی
@@ -292,7 +293,7 @@ if st.session_state.get('translated', False):
         if st.session_state.get('audio_generated', False):
             if st.button("🎤 ایجاد ویدیو دوبله شده", type="primary"):
                 with st.spinner("در حال ایجاد ویدیو دوبله شده..."):
-                    output_path = dubbing_app.create_final_video(
+                    output_path = st.session_state['dubbing_app'].create_final_video(
                         keep_original_audio=keep_original_audio,
                         original_audio_volume=original_audio_volume if keep_original_audio else 0.8
                     )
@@ -544,30 +545,34 @@ if st.session_state.get('translated', False):
             
             if st.button("📝 ایجاد ویدیو با تنظیمات سفارشی", type="primary"):
                 with st.spinner("در حال ایجاد ویدیو با زیرنویس سفارشی..."):
-                    output_path = dubbing_app.create_subtitled_video(
-                        subtitle_config=subtitle_config,
-                        fixed_text_config=fixed_text_config
-                    )
-                    
-                    if output_path and os.path.exists(output_path):
-                        st.success("✅ ویدیو با زیرنویس سفارشی با موفقیت ایجاد شد!")
+                    try:
+                        output_path = st.session_state['dubbing_app'].create_subtitled_video(
+                            subtitle_config=subtitle_config,
+                            fixed_text_config=fixed_text_config
+                        )
                         
-                        # نمایش اطلاعات فایل
-                        file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-                        st.info(f"📁 نام فایل: {os.path.basename(output_path)}")
-                        st.info(f"📊 حجم فایل: {file_size:.2f} MB")
-                        
-                        # دکمه دانلود
-                        with open(output_path, "rb") as file:
-                            st.download_button(
-                                label="📥 دانلود ویدیو با زیرنویس سفارشی",
-                                data=file.read(),
-                                file_name=os.path.basename(output_path),
-                                mime="video/mp4",
-                                type="primary"
-                            )
-                    else:
-                        st.error("❌ خطا در ایجاد ویدیو با زیرنویس سفارشی")
+                        if output_path and os.path.exists(output_path):
+                            st.success("✅ ویدیو با زیرنویس سفارشی با موفقیت ایجاد شد!")
+                            
+                            # نمایش اطلاعات فایل
+                            file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+                            st.info(f"📁 نام فایل: {os.path.basename(output_path)}")
+                            st.info(f"📊 حجم فایل: {file_size:.2f} MB")
+                            
+                            # دکمه دانلود
+                            with open(output_path, "rb") as file:
+                                st.download_button(
+                                    label="📥 دانلود ویدیو با زیرنویس سفارشی",
+                                    data=file.read(),
+                                    file_name=os.path.basename(output_path),
+                                    mime="video/mp4",
+                                    type="primary"
+                                )
+                        else:
+                            st.error("❌ خطا در ایجاد ویدیو با زیرنویس سفارشی")
+                    except Exception as e:
+                        st.error(f"❌ خطا در ایجاد ویدیو با زیرنویس سفارشی: {str(e)}")
+                        st.error("لطفاً دوباره تلاش کنید یا تنظیمات را تغییر دهید.")
         
         with tab2:
             st.markdown("#### استایل‌های آماده")
@@ -617,40 +622,44 @@ if st.session_state.get('translated', False):
             
             if st.button("📝 ایجاد ویدیو با استایل آماده", type="primary"):
                 with st.spinner("در حال ایجاد ویدیو با زیرنویس..."):
-                    output_path = dubbing_app.create_subtitled_video(subtitle_config=style_configs[subtitle_style])
-                    
-                    if output_path and os.path.exists(output_path):
-                        st.success("✅ ویدیو با زیرنویس با موفقیت ایجاد شد!")
+                    try:
+                        output_path = st.session_state['dubbing_app'].create_subtitled_video(subtitle_config=style_configs[subtitle_style])
                         
-                        # نمایش اطلاعات فایل
-                        file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-                        st.info(f"📁 نام فایل: {os.path.basename(output_path)}")
-                        st.info(f"📊 حجم فایل: {file_size:.2f} MB")
-                        
-                        # دکمه دانلود
-                        with open(output_path, "rb") as file:
-                            st.download_button(
-                                label="📥 دانلود ویدیو با زیرنویس",
-                                data=file.read(),
-                                file_name=os.path.basename(output_path),
-                                mime="video/mp4",
-                                type="primary"
-                            )
-                    else:
-                        st.error("❌ خطا در ایجاد ویدیو با زیرنویس")
+                        if output_path and os.path.exists(output_path):
+                            st.success("✅ ویدیو با زیرنویس با موفقیت ایجاد شد!")
+                            
+                            # نمایش اطلاعات فایل
+                            file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+                            st.info(f"📁 نام فایل: {os.path.basename(output_path)}")
+                            st.info(f"📊 حجم فایل: {file_size:.2f} MB")
+                            
+                            # دکمه دانلود
+                            with open(output_path, "rb") as file:
+                                st.download_button(
+                                    label="📥 دانلود ویدیو با زیرنویس",
+                                    data=file.read(),
+                                    file_name=os.path.basename(output_path),
+                                    mime="video/mp4",
+                                    type="primary"
+                                )
+                        else:
+                            st.error("❌ خطا در ایجاد ویدیو با زیرنویس")
+                    except Exception as e:
+                        st.error(f"❌ خطا در ایجاد ویدیو با زیرنویس: {str(e)}")
+                        st.error("لطفاً دوباره تلاش کنید یا استایل دیگری انتخاب کنید.")
 
 # پاکسازی و بازیابی
 col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("🧹 پاکسازی فایل‌های موقت", type="secondary"):
-        dubbing_app.clean_previous_files()
+        st.session_state['dubbing_app'].clean_previous_files()
         st.success("✅ فایل‌های موقت پاک شدند")
         st.rerun()
 
 with col2:
     if st.button("🔄 بازیابی فایل‌های SRT", type="secondary"):
-        if dubbing_app._restore_srt_files():
+        if st.session_state['dubbing_app']._restore_srt_files():
             st.success("✅ فایل‌های SRT از پشتیبان بازیابی شدند")
             st.rerun()
         else:
@@ -658,7 +667,7 @@ with col2:
 
 with col3:
     if st.button("🧽 پاکسازی فایل‌های SRT", type="secondary"):
-        if dubbing_app.clean_existing_srt_files():
+        if st.session_state['dubbing_app'].clean_existing_srt_files():
             st.success("✅ فایل‌های SRT پاکسازی شدند")
             st.rerun()
         else:

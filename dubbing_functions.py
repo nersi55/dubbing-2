@@ -1567,11 +1567,7 @@ SRT File:
                 # پیدا کردن مسیر فونت
                 font_name = sub_config['font']
                 font_path = self._get_font_path(font_name)
-                if font_path and font_name.lower() == 'vazirmatn':
-                    # برای Vazirmatn از نام فونت استفاده کن نه مسیر
-                    print(f"✅ فونت زیرنویس: {font_name} (فونت سیستم)")
-                    # font_name را تغییر نده
-                elif font_path:
+                if font_path:
                     print(f"✅ فونت زیرنویس: {font_name} → {font_path}")
                     font_name = font_path
                 else:
@@ -1597,6 +1593,7 @@ SRT File:
                     subtitle_style_parts.append("BorderStyle=4")  # جعبه گرد
                 
                 # استفاده از فیلتر subtitles با تنظیمات بهینه برای فارسی
+                # Use single quotes for force_style parameter
                 subtitle_filter = f"subtitles={temp_srt.absolute()}:force_style='{','.join(subtitle_style_parts)}'"
                 
                 # ساخت فیلترهای ترکیبی
@@ -1656,16 +1653,13 @@ SRT File:
             margin_bottom = config['margin_bottom']
             font_name = config.get('font', 'Arial')
             
-            # نرمال‌سازی متن فارسی
-            normalized_text = self._normalize_persian_text(text)
+            # برای متن ثابت، نرمال‌سازی نکن تا از گاربل شدن جلوگیری شود
+            # normalized_text = self._normalize_persian_text(text)
+            normalized_text = text
             
             # پیدا کردن فونت
             font_path = self._get_font_path(font_name)
-            if font_path and font_name.lower() == 'vazirmatn':
-                # برای Vazirmatn از نام فونت استفاده کن نه مسیر
-                print(f"✅ فونت متن ثابت: {font_name} (فونت سیستم)")
-                final_font = font_name
-            elif font_path:
+            if font_path:
                 print(f"✅ فونت متن ثابت: {font_name} → {font_path}")
                 final_font = font_path
             else:
@@ -1712,36 +1706,76 @@ SRT File:
                 # در macOS و Windows از مسیر فایل استفاده کن
                 font_param = f"fontfile='{final_font}'" if final_font.endswith(('.ttf', '.otf')) else f"font='{final_font}'"
             
-            # تنظیمات اضافی
-            extra_params = []
-            if config.get('bold', False):
-                extra_params.append("fontsize=1.2*fontsize")  # شبیه‌سازی bold
+            # تنظیم اندازه فونت (برای bold کمی بزرگتر)
+            final_fontsize = int(fontsize * 1.2) if config.get('bold', False) else fontsize
             
-            # ساخت فیلتر drawtext
-            filter_parts = [
-                f"drawtext=text='{normalized_text}'",
-                font_param,
-                f"fontsize={fontsize}",
-                f"fontcolor={drawtext_color}",
-                f"x={x_pos}",
-                f"y={y_pos}",
-                "enable='between(t,0,999999)'"  # همیشه نمایش داده شود
-            ]
+            # escape کردن متن برای drawtext
+            escaped_text = normalized_text.replace("'", "\\'").replace(":", "\\:")
             
-            # اضافه کردن تنظیمات اضافی
-            filter_parts.extend(extra_params)
+            # استفاده از subtitles filter به جای drawtext برای پشتیبانی بهتر از فارسی
+            import tempfile
+            temp_ass = tempfile.NamedTemporaryFile(mode='w', suffix='.ass', delete=False, encoding='utf-8')
             
-            # اضافه کردن رنگ زمینه اگر انتخاب شده باشد
+            # تنظیم موقعیت برای ASS
+            position = config.get('position', 'bottom_center')
+            if position == 'bottom_center':
+                alignment = 2  # center
+                margin_v = margin_bottom
+            elif position == 'bottom_left':
+                alignment = 1  # left
+                margin_v = margin_bottom
+            elif position == 'bottom_right':
+                alignment = 3  # right
+                margin_v = margin_bottom
+            elif position == 'top_center':
+                alignment = 8  # top center
+                margin_v = 10
+            elif position == 'top_left':
+                alignment = 7  # top left
+                margin_v = 10
+            elif position == 'top_right':
+                alignment = 9  # top right
+                margin_v = 10
+            else:
+                alignment = 2  # center
+                margin_v = margin_bottom
+            
+            # تنظیم رنگ برای ASS (BGR format)
+            r = color_hex[4:6]
+            g = color_hex[2:4]
+            b = color_hex[0:2]
+            ass_color = f"&H{b}{g}{r}&"
+            
+            # تنظیم رنگ زمینه
             background_color = config.get('background_color', 'none')
             if background_color != 'none':
                 bg_color_hex = self._color_to_hex(background_color)
                 bg_r = bg_color_hex[4:6]
                 bg_g = bg_color_hex[2:4]
                 bg_b = bg_color_hex[0:2]
-                bg_color = f"0x{bg_r}{bg_g}{bg_b}"
-                filter_parts.append(f"box=1:boxcolor={bg_color}@0.8:boxborderw=5")
+                bg_color = f"&H{bg_b}{bg_g}{bg_r}&"
+            else:
+                bg_color = "&H000000&"  # transparent
             
-            filter_text = ':'.join(filter_parts)
+            # محتوای فایل ASS
+            ass_content = f"""[Script Info]
+Title: Fixed Text
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: FixedText,{final_font},{final_fontsize},{ass_color},{ass_color},{bg_color},{bg_color},1,0,0,0,100,100,0,0,1,2,0,{alignment},10,10,{margin_v},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,99:59:59.99,FixedText,,0,0,0,,{normalized_text}
+"""
+            
+            temp_ass.write(ass_content)
+            temp_ass.close()
+            
+            # استفاده از subtitles filter
+            filter_text = f"subtitles='{temp_ass.name}'"
             
             return filter_text
             
@@ -1809,6 +1843,16 @@ SRT File:
             # خواندن فایل SRT
             subs = pysrt.open(str(srt_file), encoding='utf-8')
             
+            # تنظیم فونت
+            font_name = config.get('font', 'vazirmatn')
+            font_path = self._get_font_path(font_name)
+            if font_path:
+                print(f"✅ فونت زیرنویس: {font_name} → {font_path}")
+                final_font = font_path
+            else:
+                print(f"⚠️ فونت زیرنویس: {font_name} (فونت سیستم)")
+                final_font = font_name
+            
             # ایجاد فایل ASS
             ass_content = f"""[Script Info]
 Title: Persian Subtitles
@@ -1818,7 +1862,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{config['font']},{config['fontsize']},&H{self._color_to_hex(config['color'])},&H{self._color_to_hex(config['color'])},&H{self._color_to_hex(config['outline_color'])},&H00000000,{1 if config.get('bold', False) else 0},{1 if config.get('italic', False) else 0},0,0,100,100,0,0,1,{config['outline_width']},0,2,10,10,{config['margin_v']},1
+Style: Default,{final_font},{config['fontsize']},&H{self._color_to_hex(config['color'])},&H{self._color_to_hex(config['color'])},&H{self._color_to_hex(config['outline_color'])},&H00000000,{1 if config.get('bold', False) else 0},{1 if config.get('italic', False) else 0},0,0,100,100,0,0,1,{config['outline_width']},0,2,10,10,{config['margin_v']},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1828,7 +1872,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             for sub in subs:
                 start_time = self._srt_time_to_ass_time(sub.start)
                 end_time = self._srt_time_to_ass_time(sub.end)
-                text = sub.text.replace('\n', '\\N')  # تبدیل خط جدید
+                # نرمال‌سازی متن فارسی برای رندر بهتر
+                normalized_text = self._normalize_persian_text(sub.text)
+                text = normalized_text.replace('\n', '\\N')  # تبدیل خط جدید
                 ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}\n"
             
             # ذخیره فایل ASS
@@ -1860,14 +1906,40 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # نرمال‌سازی متن فارسی
             normalized_text = unicodedata.normalize('NFC', text)
             
-            # جایگزینی کاراکترهای مشکل‌دار
+            # تبدیل کاراکترهای عربی به فارسی
+            arabic_to_persian = {
+                'ي': 'ی', 'ك': 'ک', 'ة': 'ه', 'أ': 'ا', 'إ': 'ا',
+                'آ': 'آ', 'ؤ': 'و', 'ئ': 'ی', 'ء': 'ء', 'ة': 'ه'
+            }
+            
+            for arabic, persian in arabic_to_persian.items():
+                normalized_text = normalized_text.replace(arabic, persian)
+            
+            # جایگزینی کاراکترهای مشکل‌دار و لیگاتورها
             replacements = {
                 'مثلا': 'مثلاً',   # تبدیل به شکل صحیح با لا
                 'مثلاًً': 'مثلاً',  # حذف لا اضافی
+                'لا': 'لا',        # اطمینان از رندر صحیح لا
+                'لی': 'لی',        # اطمینان از رندر صحیح لی
+                'لو': 'لو',        # اطمینان از رندر صحیح لو
+                'لر': 'لر',        # اطمینان از رندر صحیح لر
+                'لم': 'لم',        # اطمینان از رندر صحیح لم
+                'لن': 'لن',        # اطمینان از رندر صحیح لن
+                'له': 'له',        # اطمینان از رندر صحیح له
+                'لی': 'لی',        # اطمینان از رندر صحیح لی
+                'لو': 'لو',        # اطمینان از رندر صحیح لو
+                'لر': 'لر',        # اطمینان از رندر صحیح لر
+                'لم': 'لم',        # اطمینان از رندر صحیح لم
+                'لن': 'لن',        # اطمینان از رندر صحیح لن
+                'له': 'له',        # اطمینان از رندر صحیح له
             }
             
             for old, new in replacements.items():
                 normalized_text = normalized_text.replace(old, new)
+            
+            # حذف کاراکترهای کنترل و غیرقابل چاپ
+            import re
+            normalized_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', normalized_text)
             
             return normalized_text
             
