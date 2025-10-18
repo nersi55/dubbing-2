@@ -100,7 +100,7 @@ class VideoDubbingApp:
                 file.unlink()
     
     def download_youtube_video(self, url: str) -> bool:
-        """دانلود ویدیو از یوتیوب"""
+        """دانلود ویدیو از یوتیوب - نسخه بهینه شده برای سرور لینوکس"""
         try:
             # Clean previous files
             for file in self.work_dir.glob('temp_video*'):
@@ -109,16 +109,38 @@ class VideoDubbingApp:
             format_option = 'bestvideo+bestaudio/best'
             temp_filename = str(self.work_dir / 'temp_video.%(ext)s')
             
+            # تنظیمات پایه
             video_opts = {
                 'format': format_option,
                 'outtmpl': temp_filename,
                 'nocheckcertificate': True,
                 'ignoreerrors': False,
                 'no_warnings': False,
-                'quiet': False
+                'quiet': False,
+                # تنظیمات مخصوص سرور لینوکس
+                'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'referer': 'https://www.youtube.com/',
+                'headers': {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept-Charset': 'UTF-8,*;q=0.7',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Cache-Control': 'max-age=0',
+                },
+                'socket_timeout': 30,
+                'retries': 3,
+                'fragment_retries': 3,
+                'extractor_retries': 3,
+                'http_chunk_size': 10485760,  # 10MB chunks
             }
             
-            # Add cookies support for YouTube authentication
+            # بررسی وجود فایل کوکی (اختیاری)
             cookies_files = ['cookies.txt', 'cookies.text', 'cookies.json']
             cookies_path = None
             
@@ -128,17 +150,13 @@ class VideoDubbingApp:
                     break
             
             if cookies_path:
-                video_opts['cookiesfrombrowser'] = None  # Try browser cookies first
                 if cookies_path.endswith('.txt') or cookies_path.endswith('.text'):
                     video_opts['cookiefile'] = cookies_path
                 elif cookies_path.endswith('.json'):
-                    video_opts['cookiesfrombrowser'] = None
                     video_opts['cookiefile'] = cookies_path
                 print(f"🍪 استفاده از فایل کوکی: {cookies_path}")
             else:
-                # Try to use browser cookies as fallback
-                video_opts['cookiesfrombrowser'] = None
-                print("🍪 تلاش برای استفاده از کوکی‌های مرورگر...")
+                print("🌐 استفاده از تنظیمات سرور لینوکس (بدون کوکی)")
             
             with yt_dlp.YoutubeDL(video_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -169,6 +187,61 @@ class VideoDubbingApp:
             
         except Exception as e:
             print(f"خطا در دانلود: {str(e)}")
+            # تلاش با تنظیمات جایگزین
+            return self._fallback_download(url)
+    
+    def _fallback_download(self, url: str) -> bool:
+        """دانلود با تنظیمات جایگزین در صورت شکست"""
+        try:
+            print("🔄 تلاش با تنظیمات جایگزین...")
+            
+            format_option = 'best[height<=720]/best'
+            temp_filename = str(self.work_dir / 'temp_video.%(ext)s')
+            
+            # تنظیمات ساده‌تر
+            video_opts = {
+                'format': format_option,
+                'outtmpl': temp_filename,
+                'nocheckcertificate': True,
+                'ignoreerrors': True,
+                'no_warnings': True,
+                'quiet': True,
+                'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                'referer': 'https://www.youtube.com/',
+                'socket_timeout': 60,
+                'retries': 1,
+            }
+            
+            with yt_dlp.YoutubeDL(video_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
+            
+            if os.path.exists(downloaded_file):
+                _, file_extension = os.path.splitext(downloaded_file)
+                final_filename = self.work_dir / f'input_video{file_extension}'
+                os.rename(downloaded_file, str(final_filename))
+                
+                if file_extension.lower() != '.mp4':
+                    mp4_path = self.work_dir / 'input_video.mp4'
+                    subprocess.run([
+                        'ffmpeg', '-i', str(final_filename), 
+                        '-c', 'copy', str(mp4_path), '-y'
+                    ], check=True, capture_output=True)
+                    final_filename.unlink()
+                
+                # Extract audio
+                audio_path = self.work_dir / 'audio.wav'
+                subprocess.run([
+                    'ffmpeg', '-i', str(self.work_dir / 'input_video.mp4'), 
+                    '-vn', str(audio_path), '-y'
+                ], check=True, capture_output=True)
+                
+                print("✅ دانلود با تنظیمات جایگزین موفق بود")
+                return True
+            return False
+            
+        except Exception as e:
+            print(f"❌ خطا در دانلود جایگزین: {str(e)}")
             return False
     
     def extract_transcript_from_youtube(self, url: str, language: str = "Auto-detect") -> bool:
@@ -1438,67 +1511,102 @@ SRT File:
     def _create_fixed_text_filter(self, config: dict) -> str:
         """ایجاد فیلتر FFmpeg برای متن ثابت با پشتیبانی کامل از فارسی"""
         try:
-            # ایجاد فایل SRT موقت برای متن ثابت
+            import platform
+            system = platform.system()
+            
+            # متن و تنظیمات
             text = config['text']
             fontsize = config['fontsize']
             color = config['color']
             margin_bottom = config['margin_bottom']
             font_name = config.get('font', 'Arial')
             
-            # ایجاد فایل SRT موقت با متن ثابت و نرمال‌سازی متن فارسی
+            # نرمال‌سازی متن فارسی
             normalized_text = self._normalize_persian_text(text)
-            temp_srt_content = f"""1
-00:00:00,000 --> 99:59:59,999
-{normalized_text}
-"""
             
-            # ذخیره فایل SRT موقت
-            temp_srt_path = self.work_dir / "temp_fixed_text.srt"
-            with open(temp_srt_path, 'w', encoding='utf-8') as f:
-                f.write(temp_srt_content)
-            
-            # ساخت فیلتر subtitle برای متن ثابت
-            color_hex = self._color_to_hex(color)
-            background_color = config.get('background_color', 'none')
-            
-            # پیدا کردن مسیر فونت
+            # پیدا کردن فونت
             font_path = self._get_font_path(font_name)
             if font_path and font_name.lower() == 'vazirmatn':
                 # برای Vazirmatn از نام فونت استفاده کن نه مسیر
                 print(f"✅ فونت متن ثابت: {font_name} (فونت سیستم)")
-                # font_name را تغییر نده
+                final_font = font_name
             elif font_path:
                 print(f"✅ فونت متن ثابت: {font_name} → {font_path}")
-                font_name = font_path
+                final_font = font_path
             else:
                 print(f"⚠️ فونت متن ثابت: {font_name} (فونت سیستم)")
+                final_font = font_name
             
-            # تنظیمات استایل برای متن ثابت
-            style_parts = [
-                f"FontName={font_name}",
-                f"FontSize={fontsize}",
-                f"PrimaryColour=&H{color_hex}",
-                f"Alignment={self._get_alignment(config.get('position', 'bottom_center'))}",
-                f"MarginV={margin_bottom}",
-                "Outline=0",
-                "Shadow=0"
+            # تنظیم موقعیت متن
+            position = config.get('position', 'bottom_center')
+            if position == 'bottom_center':
+                x_pos = '(w-text_w)/2'
+                y_pos = f'h-text_h-{margin_bottom}'
+            elif position == 'bottom_left':
+                x_pos = '10'
+                y_pos = f'h-text_h-{margin_bottom}'
+            elif position == 'bottom_right':
+                x_pos = 'w-text_w-10'
+                y_pos = f'h-text_h-{margin_bottom}'
+            elif position == 'top_center':
+                x_pos = '(w-text_w)/2'
+                y_pos = '10'
+            elif position == 'top_left':
+                x_pos = '10'
+                y_pos = '10'
+            elif position == 'top_right':
+                x_pos = 'w-text_w-10'
+                y_pos = '10'
+            else:
+                x_pos = '(w-text_w)/2'
+                y_pos = f'h-text_h-{margin_bottom}'
+            
+            # تنظیم رنگ
+            color_hex = self._color_to_hex(color)
+            # تبدیل BGR به RGB برای drawtext
+            r = color_hex[4:6]
+            g = color_hex[2:4]
+            b = color_hex[0:2]
+            drawtext_color = f"0x{r}{g}{b}"
+            
+            # تنظیم فونت برای drawtext
+            if system == 'Linux':
+                # در Linux از نام فونت استفاده کن
+                font_param = f"fontfile='{final_font}'" if final_font.endswith(('.ttf', '.otf')) else f"font='{final_font}'"
+            else:
+                # در macOS و Windows از مسیر فایل استفاده کن
+                font_param = f"fontfile='{final_font}'" if final_font.endswith(('.ttf', '.otf')) else f"font='{final_font}'"
+            
+            # تنظیمات اضافی
+            extra_params = []
+            if config.get('bold', False):
+                extra_params.append("fontsize=1.2*fontsize")  # شبیه‌سازی bold
+            
+            # ساخت فیلتر drawtext
+            filter_parts = [
+                f"drawtext=text='{normalized_text}'",
+                font_param,
+                f"fontsize={fontsize}",
+                f"fontcolor={drawtext_color}",
+                f"x={x_pos}",
+                f"y={y_pos}",
+                "enable='between(t,0,999999)'"  # همیشه نمایش داده شود
             ]
             
-            # اضافه کردن تنظیمات ضخیم و مایل
-            if config.get('bold', False):
-                style_parts.append("Bold=1")
-            if config.get('italic', False):
-                style_parts.append("Italic=1")
+            # اضافه کردن تنظیمات اضافی
+            filter_parts.extend(extra_params)
             
             # اضافه کردن رنگ زمینه اگر انتخاب شده باشد
+            background_color = config.get('background_color', 'none')
             if background_color != 'none':
                 bg_color_hex = self._color_to_hex(background_color)
-                style_parts.extend([
-                    f"BackColour=&H{bg_color_hex}",
-                    "BorderStyle=4"  # جعبه گرد
-                ])
+                bg_r = bg_color_hex[4:6]
+                bg_g = bg_color_hex[2:4]
+                bg_b = bg_color_hex[0:2]
+                bg_color = f"0x{bg_r}{bg_g}{bg_b}"
+                filter_parts.append(f"box=1:boxcolor={bg_color}@0.8:boxborderw=5")
             
-            filter_text = f"subtitles={temp_srt_path.absolute()}:force_style='{','.join(style_parts)}'"
+            filter_text = ':'.join(filter_parts)
             
             return filter_text
             
