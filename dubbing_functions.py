@@ -1359,7 +1359,11 @@ SRT File:
                 # پیدا کردن مسیر فونت
                 font_name = sub_config['font']
                 font_path = self._get_font_path(font_name)
-                if font_path:
+                if font_path and font_name.lower() == 'vazirmatn':
+                    # برای Vazirmatn از نام فونت استفاده کن نه مسیر
+                    print(f"✅ فونت زیرنویس: {font_name} (فونت سیستم)")
+                    # font_name را تغییر نده
+                elif font_path:
                     print(f"✅ فونت زیرنویس: {font_name} → {font_path}")
                     font_name = font_path
                 else:

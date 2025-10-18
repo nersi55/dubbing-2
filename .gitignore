@@ -17,8 +17,6 @@ temp/
 *.mp4
 *.srt
 *.zip
-*.webm
-cookies.json
 
 # Fonts (keep local fonts in repo for server deployment)
 # fonts/ is intentionally not ignored to ensure server compatibility
