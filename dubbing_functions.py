@@ -67,14 +67,26 @@ except ImportError:
                 ], check=True, capture_output=True)
 from youtube_transcript_api import YouTubeTranscriptApi
 import whisper
+from youtube_api_client import YouTubeAPIClient, YouTubeSimpleAPI
 
 
 class VideoDubbingApp:
-    def __init__(self, api_key: str):
-        """Initialize the dubbing application with Google API key"""
+    def __init__(self, api_key: str, youtube_api_key: str = None):
+        """Initialize the dubbing application with Google API key and optional YouTube API key"""
         self.api_key = api_key
+        self.youtube_api_key = youtube_api_key
         genai.configure(api_key=api_key)
         self.client = genai_client.Client(api_key=api_key)
+        
+        # Initialize YouTube API client if key is provided
+        self.youtube_client = None
+        if youtube_api_key:
+            try:
+                self.youtube_client = YouTubeSimpleAPI(youtube_api_key)
+                print("✅ YouTube API client initialized")
+            except Exception as e:
+                print(f"⚠️ Warning: Could not initialize YouTube API client: {e}")
+                self.youtube_client = None
         
         # Create necessary directories
         self.work_dir = Path("dubbing_work")
@@ -379,33 +391,96 @@ class VideoDubbingApp:
         
         print("\n" + "="*60)
     
+    def get_youtube_video_info(self, video_id: str) -> Optional[Dict[str, Any]]:
+        """
+        دریافت اطلاعات ویدیو از YouTube API
+        
+        Args:
+            video_id: شناسه ویدیو YouTube
+            
+        Returns:
+            اطلاعات ویدیو یا None
+        """
+        if not self.youtube_client:
+            print("⚠️ YouTube API client not initialized")
+            return None
+        
+        try:
+            return self.youtube_client.get_video_info(video_id)
+        except Exception as e:
+            print(f"❌ خطا در دریافت اطلاعات ویدیو: {e}")
+            return None
+    
+    def validate_youtube_video(self, url: str) -> bool:
+        """
+        بررسی معتبر بودن ویدیو YouTube
+        
+        Args:
+            url: لینک ویدیو YouTube
+            
+        Returns:
+            True اگر ویدیو معتبر باشد
+        """
+        if not self.youtube_client:
+            print("⚠️ YouTube API client not initialized, skipping validation")
+            return True
+        
+        try:
+            # Extract video ID from URL
+            video_id = self._extract_video_id(url)
+            if not video_id:
+                print("❌ شناسه ویدیو یافت نشد")
+                return False
+            
+            # Get video info from YouTube API
+            video_info = self.get_youtube_video_info(video_id)
+            if not video_info:
+                print("❌ ویدیو یافت نشد یا در دسترس نیست")
+                return False
+            
+            # Check if video is available
+            snippet = video_info.get('snippet', {})
+            title = snippet.get('title', 'نامشخص')
+            duration = video_info.get('contentDetails', {}).get('duration', 'نامشخص')
+            
+            print(f"✅ ویدیو معتبر: {title}")
+            print(f"⏱️ مدت زمان: {duration}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ خطا در بررسی ویدیو: {e}")
+            return False
+    
+    def _extract_video_id(self, url: str) -> Optional[str]:
+        """استخراج شناسه ویدیو از URL"""
+        patterns = [
+            r'(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})',
+            r'(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        
+        return None
+
     def extract_transcript_from_youtube(self, url: str, language: str = "Auto-detect") -> bool:
         """استخراج زیرنویس از یوتیوب"""
         try:
-            # Extract video ID
-            video_id = None
-            patterns = [
-                r'(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})',
-                r'(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})'
-            ]
+            print(f"🔍 استخراج زیرنویس از یوتیوب: {url}")
             
-            for pattern in patterns:
-                match = re.search(pattern, url)
-                if match:
-                    video_id = match.group(1)
-                    break
-            
+            # Extract video ID from URL
+            video_id = self._extract_video_id(url)
             if not video_id:
-                if 'shorts/' in url:
-                    shorts_id = url.split('shorts/')[1].split('?')[0].split('&')[0]
-                    if len(shorts_id) == 11:
-                        video_id = shorts_id
-                elif 'youtu.be/' in url:
-                    video_id = url.split('youtu.be/')[1].split('?')[0].split('&')[0]
-                elif 'v=' in url:
-                    video_id = url.split('v=')[1].split('&')[0].split('?')[0]
+                print("❌ شناسه ویدیو یافت نشد")
+                return False
             
-            if not video_id or len(video_id) != 11:
+            print(f"📺 شناسه ویدیو: {video_id}")
+            
+            # Validate video with YouTube API if available
+            if self.youtube_client and not self.validate_youtube_video(url):
                 return False
             
             # Language mapping

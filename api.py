@@ -95,10 +95,10 @@ processing_jobs: Dict[str, ProcessStatus] = {}
 # ذخیره‌سازی instance های دوبله
 dubbing_instances: Dict[str, VideoDubbingApp] = {}
 
-def get_dubbing_app(api_key: str) -> VideoDubbingApp:
+def get_dubbing_app(api_key: str, youtube_api_key: str = None) -> VideoDubbingApp:
     """دریافت یا ایجاد instance دوبله"""
     if api_key not in dubbing_instances:
-        dubbing_instances[api_key] = VideoDubbingApp(api_key)
+        dubbing_instances[api_key] = VideoDubbingApp(api_key, youtube_api_key)
     return dubbing_instances[api_key]
 
 def create_job_status(job_id: str, status: str, current_step: str, message: str) -> ProcessStatus:
