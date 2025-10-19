@@ -18,5 +18,12 @@ temp/
 *.srt
 *.zip
 
+# OAuth and credentials (security)
+youtube_credentials*.json
+youtube_token.pickle
+*.pickle
+credentials.json
+token.json
+
 # Fonts (keep local fonts in repo for server deployment)
 # fonts/ is intentionally not ignored to ensure server compatibility

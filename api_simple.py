@@ -40,6 +40,7 @@ app.add_middleware(
 
 # تنظیمات ثابت
 API_KEY = "AIzaSyBNYpugB8Ezrpmk-U7Yvp9ynClEJLCETMo"
+YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')  # از متغیر محیطی دریافت کن
 TARGET_LANGUAGE = "Persian (FA)"
 VOICE = "Fenrir"
 ENABLE_COMPRESSION = False
@@ -95,8 +96,12 @@ processing_tasks = {}
 
 # ایجاد instance از کلاس دوبله
 try:
-    dubbing_app = VideoDubbingApp(API_KEY)
+    dubbing_app = VideoDubbingApp(API_KEY, YOUTUBE_API_KEY)
     print("✅ اتصال به Google AI برقرار شد")
+    if YOUTUBE_API_KEY:
+        print("✅ YouTube API key تنظیم شد")
+    else:
+        print("⚠️ YouTube API key تنظیم نشده - از yt-dlp استفاده می‌شود")
 except Exception as e:
     print(f"❌ خطا در اتصال به Google AI: {str(e)}")
     dubbing_app = None

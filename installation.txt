@@ -3,6 +3,7 @@ sudo apt update
 sudo apt upgrade -y
 
 sudo apt upgrade -ysudo apt install -y python3 python3-pip python3-venv git ffmpeg
+or sudo apt install -y python3 python3-pip python3-venv git ffmpeg
 
 cd ~
 
@@ -22,3 +23,12 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 sudo apt update
 sudo apt install fonts-vazirmatn
 sudo apt install fonts-vazirmatn
+
+
+pip install -r requirements.txt
+
+
+receive the lateset version form github
+git fetch origin
+git reset --hard origin/main
+git clean -fd
