@@ -67,6 +67,9 @@ class AdvancedYouTubeDownloader:
             'ignoreerrors': True,
             'no_warnings': True,
             'quiet': True,
+            # 🔥 تنظیمات IPv6
+            'prefer_ipv6': True,  # اجبار به استفاده از IPv6
+            'source_address': '::',  # استفاده از IPv6 برای اتصال
             'user_agent': self._get_random_user_agent(),
             'referer': 'https://www.youtube.com/',
             'socket_timeout': 30,

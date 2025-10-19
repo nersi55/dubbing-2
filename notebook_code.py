@@ -69,7 +69,10 @@ def process_youtube(url):
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'no_warnings': False,
-            'quiet': False
+            'quiet': False,
+            # 🔥 تنظیمات IPv6
+            'prefer_ipv6': True,  # اجبار به استفاده از IPv6
+            'source_address': '::',  # استفاده از IPv6 برای اتصال
         }
 
         try:

@@ -129,6 +129,9 @@ class VideoDubbingApp:
                 'ignoreerrors': False,
                 'no_warnings': False,
                 'quiet': False,
+                # 🔥 تنظیمات IPv6
+                'prefer_ipv6': True,  # اجبار به استفاده از IPv6
+                'source_address': '::',  # استفاده از IPv6 برای اتصال
                 # تنظیمات مخصوص سرور لینوکس
                 'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'referer': 'https://www.youtube.com/',
