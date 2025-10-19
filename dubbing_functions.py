@@ -19,6 +19,7 @@ import pysrt
 import google.generativeai as genai
 from google.genai import types
 import google.genai as genai_client
+from youtube_oauth import YouTubeOAuthManager
 try:
     from pydub import AudioSegment
 except ImportError:
@@ -99,6 +100,138 @@ class VideoDubbingApp:
             for file in self.segments_dir.glob("*"):
                 file.unlink()
     
+    def download_youtube_video_oauth(self, url: str, api_key: str) -> bool:
+        """دانلود ویدیو از یوتیوب با استفاده از OAuth"""
+        try:
+            # استخراج video_id از URL
+            video_id = self._extract_video_id(url)
+            if not video_id:
+                print("❌ خطا در استخراج شناسه ویدیو")
+                return False
+            
+            # ایجاد OAuth manager
+            oauth_manager = YouTubeOAuthManager(api_key)
+            
+            # احراز هویت
+            if not oauth_manager.authenticate():
+                print("❌ خطا در احراز هویت OAuth")
+                return False
+            
+            # دریافت اطلاعات ویدیو
+            video_info = oauth_manager.get_video_info(video_id)
+            if not video_info:
+                print("❌ خطا در دریافت اطلاعات ویدیو")
+                return False
+            
+            print(f"📹 دانلود ویدیو: {video_info['title']}")
+            print(f"📺 کانال: {video_info['channel_title']}")
+            
+            # بررسی وضعیت حریم خصوصی
+            if video_info['privacy_status'] != 'public':
+                print(f"⚠️ ویدیو خصوصی است: {video_info['privacy_status']}")
+                return False
+            
+            # دانلود با yt-dlp (با OAuth credentials)
+            return self._download_with_oauth_credentials(url, oauth_manager)
+            
+        except Exception as e:
+            print(f"❌ خطا در دانلود OAuth: {str(e)}")
+            return False
+    
+    def _extract_video_id(self, url: str) -> Optional[str]:
+        """استخراج شناسه ویدیو از URL یوتیوب"""
+        import re
+        
+        patterns = [
+            r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([^&\n?#]+)',
+            r'youtube\.com/v/([^&\n?#]+)',
+            r'youtube\.com/watch\?.*v=([^&\n?#]+)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        
+        return None
+    
+    def _download_with_oauth_credentials(self, url: str, oauth_manager: YouTubeOAuthManager) -> bool:
+        """دانلود ویدیو با استفاده از OAuth credentials"""
+        try:
+            # Clean previous files
+            for file in self.work_dir.glob('temp_video*'):
+                file.unlink()
+            
+            format_option = 'bestvideo+bestaudio/best'
+            temp_filename = str(self.work_dir / 'temp_video.%(ext)s')
+            
+            # تنظیمات yt-dlp با OAuth
+            video_opts = {
+                'format': format_option,
+                'outtmpl': temp_filename,
+                'nocheckcertificate': True,
+                'ignoreerrors': False,
+                'no_warnings': False,
+                'quiet': False,
+                # تنظیمات OAuth
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'referer': 'https://www.youtube.com/',
+                'headers': {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                },
+                'socket_timeout': 30,
+                'retries': 3,
+                'fragment_retries': 3,
+                'extractor_retries': 3,
+                'http_chunk_size': 10485760,  # 10MB chunks
+            }
+            
+            # اضافه کردن Authorization header اگر OAuth credentials موجود باشد
+            if oauth_manager.credentials and oauth_manager.credentials.token:
+                video_opts['headers']['Authorization'] = f'Bearer {oauth_manager.credentials.token}'
+            
+            # حذف None values
+            video_opts = {k: v for k, v in video_opts.items() if v is not None}
+            
+            print(f"🔧 تنظیمات yt-dlp: {video_opts}")
+            
+            with yt_dlp.YoutubeDL(video_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
+            
+            if os.path.exists(downloaded_file):
+                _, file_extension = os.path.splitext(downloaded_file)
+                final_filename = self.work_dir / f'input_video{file_extension}'
+                os.rename(downloaded_file, str(final_filename))
+                
+                if file_extension.lower() != '.mp4':
+                    mp4_path = self.work_dir / 'input_video.mp4'
+                    subprocess.run([
+                        'ffmpeg', '-i', str(final_filename), 
+                        '-c', 'copy', str(mp4_path), '-y'
+                    ], check=True, capture_output=True)
+                    final_filename.unlink()
+                
+                # Extract audio
+                audio_path = self.work_dir / 'audio.wav'
+                subprocess.run([
+                    'ffmpeg', '-i', str(self.work_dir / 'input_video.mp4'), 
+                    '-vn', str(audio_path), '-y'
+                ], check=True, capture_output=True)
+                
+                print("✅ دانلود با OAuth موفقیت‌آمیز بود")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"❌ خطا در دانلود با OAuth: {str(e)}")
+            # تلاش با دانلود معمولی
+            print("🔄 تلاش با دانلود معمولی...")
+            return self.download_youtube_video(url)
+
     def download_youtube_video(self, url: str) -> bool:
         """دانلود ویدیو از یوتیوب - نسخه بهینه شده برای سرور لینوکس"""
         try:
@@ -379,6 +512,41 @@ class VideoDubbingApp:
         
         print("\n" + "="*60)
     
+    def extract_transcript_from_youtube_oauth(self, url: str, api_key: str, language: str = "en") -> bool:
+        """استخراج زیرنویس از یوتیوب با استفاده از OAuth"""
+        try:
+            # استخراج video_id از URL
+            video_id = self._extract_video_id(url)
+            if not video_id:
+                print("❌ خطا در استخراج شناسه ویدیو")
+                return False
+            
+            # ایجاد OAuth manager
+            oauth_manager = YouTubeOAuthManager(api_key)
+            
+            # احراز هویت
+            if not oauth_manager.authenticate():
+                print("❌ خطا در احراز هویت OAuth")
+                return False
+            
+            # دریافت متن ویدیو
+            transcript = oauth_manager.get_video_transcript(video_id, language)
+            if not transcript:
+                print("❌ خطا در دریافت متن ویدیو")
+                return False
+            
+            # ذخیره متن به عنوان فایل SRT
+            srt_path = self.work_dir / 'audio.srt'
+            with open(srt_path, 'w', encoding='utf-8') as f:
+                f.write(transcript)
+            
+            print("✅ استخراج متن با OAuth موفقیت‌آمیز بود")
+            return True
+            
+        except Exception as e:
+            print(f"❌ خطا در استخراج متن OAuth: {str(e)}")
+            return False
+
     def extract_transcript_from_youtube(self, url: str, language: str = "Auto-detect") -> bool:
         """استخراج زیرنویس از یوتیوب"""
         try:

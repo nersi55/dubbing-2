@@ -25,6 +25,12 @@ requests>=2.31.0
 pathlib2>=2.3.7
 typing-extensions>=4.8.0
 
+# OAuth Dependencies for YouTube
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+google-api-python-client>=2.100.0
+
 # System Requirements (install separately):
 # پیش‌نیازهای سیستم (جداگانه نصب کنید):
 # - FFmpeg: https://ffmpeg.org/download.html

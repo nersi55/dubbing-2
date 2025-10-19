@@ -71,6 +71,22 @@ class YouTubeDownloadRequest(BaseModel):
     sleep_between_requests: int = Field(default=30, description="زمان انتظار بین درخواست‌ها")
     extraction_method: str = Field(default="whisper", description="روش استخراج متن (whisper/youtube)")
 
+class YouTubeOAuthDownloadRequest(BaseModel):
+    """درخواست دانلود از یوتیوب با OAuth"""
+    api_key: str = Field(..., description="کلید Google API")
+    youtube_url: str = Field(..., description="لینک ویدیو یوتیوب")
+    target_language: str = Field(default="Persian (FA)", description="زبان مقصد")
+    voice: str = Field(default="Fenrir", description="گوینده")
+    speech_prompt: Optional[str] = Field(default="", description="پرامپت لحن صدا")
+    keep_original_audio: bool = Field(default=False, description="حفظ صدای اصلی")
+    original_audio_volume: float = Field(default=0.3, description="حجم صدای اصلی")
+    enable_compression: bool = Field(default=True, description="فعال‌سازی فشرده‌سازی")
+    merge_count: int = Field(default=5, description="تعداد دیالوگ برای ادغام")
+    tts_model: str = Field(default="gemini-2.5-flash-preview-tts", description="مدل TTS")
+    sleep_between_requests: int = Field(default=30, description="زمان انتظار بین درخواست‌ها")
+    use_oauth: bool = Field(default=True, description="استفاده از OAuth")
+    transcript_language: str = Field(default="en", description="زبان زیرنویس برای استخراج")
+
 class SubtitleRequest(BaseModel):
     """درخواست ایجاد زیرنویس"""
     api_key: str = Field(..., description="کلید Google API")
@@ -220,7 +236,8 @@ async def root():
         "docs": "/docs",
         "endpoints": {
             "upload_video": "POST /upload-video",
-            "download_youtube": "POST /download-youtube", 
+            "download_youtube": "POST /download-youtube",
+            "download_youtube_oauth": "POST /download-youtube-oauth", 
             "create_subtitles": "POST /create-subtitles",
             "job_status": "GET /job-status/{job_id}",
             "download_result": "GET /download/{job_id}",
@@ -331,6 +348,74 @@ async def download_youtube_video(
     except Exception as e:
         logger.error(f"خطا در دانلود ویدیو: {str(e)}")
         raise HTTPException(status_code=500, detail=f"خطا در دانلود ویدیو: {str(e)}")
+
+@app.post("/download-youtube-oauth")
+async def download_youtube_video_oauth(
+    background_tasks: BackgroundTasks,
+    request: YouTubeOAuthDownloadRequest
+):
+    """دانلود ویدیو از یوتیوب با OAuth و شروع پردازش"""
+    try:
+        # ایجاد job ID
+        job_id = str(uuid.uuid4())
+        
+        # ایجاد instance دوبله
+        dubbing_app = get_dubbing_app(request.api_key)
+        
+        # ایجاد وضعیت کار
+        processing_jobs[job_id] = create_job_status(
+            job_id, "pending", "downloading_oauth", "در حال دانلود ویدیو از یوتیوب با OAuth..."
+        )
+        
+        # شروع پردازش در پس‌زمینه
+        request_data = request.dict()
+        background_tasks.add_task(process_youtube_oauth_workflow, job_id, dubbing_app, request_data)
+        
+        return {
+            "job_id": job_id,
+            "status": "downloading_oauth",
+            "message": "دانلود ویدیو از یوتیوب با OAuth شروع شد",
+            "check_status_url": f"/job-status/{job_id}",
+            "download_url": f"/download/{job_id}"
+        }
+        
+    except Exception as e:
+        logger.error(f"خطا در دانلود ویدیو OAuth: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"خطا در دانلود ویدیو OAuth: {str(e)}")
+
+async def process_youtube_oauth_workflow(job_id: str, dubbing_app: VideoDubbingApp, request_data: Dict[str, Any]):
+    """پردازش ویدیو یوتیوب با OAuth"""
+    try:
+        # مرحله 1: دانلود ویدیو با OAuth
+        update_job_status(job_id, "processing", 10, "downloading_oauth", "دانلود ویدیو از یوتیوب با OAuth...")
+        youtube_url = request_data['youtube_url']
+        api_key = request_data['api_key']
+        
+        success = dubbing_app.download_youtube_video_oauth(youtube_url, api_key)
+        if not success:
+            raise Exception("خطا در دانلود ویدیو از یوتیوب با OAuth")
+        
+        # مرحله 2: استخراج متن
+        update_job_status(job_id, "processing", 20, "extracting_text_oauth", "استخراج متن با OAuth...")
+        transcript_language = request_data.get('transcript_language', 'en')
+        
+        # تلاش برای استخراج متن با OAuth
+        success = dubbing_app.extract_transcript_from_youtube_oauth(youtube_url, api_key, transcript_language)
+        
+        # اگر OAuth موفق نبود، از روش معمولی استفاده کن
+        if not success:
+            update_job_status(job_id, "processing", 25, "extracting_text_fallback", "استخراج متن با روش جایگزین...")
+            success = dubbing_app.extract_audio_with_whisper()
+        
+        if not success:
+            raise Exception("خطا در استخراج متن")
+        
+        # ادامه پردازش مشابه ویدیو آپلود شده
+        await process_video_workflow(job_id, dubbing_app, str(dubbing_app.work_dir / 'input_video.mp4'), request_data)
+        
+    except Exception as e:
+        logger.error(f"خطا در پردازش ویدیو یوتیوب OAuth {job_id}: {str(e)}")
+        update_job_status(job_id, "failed", 0, "failed", f"خطا: {str(e)}")
 
 async def process_youtube_workflow(job_id: str, dubbing_app: VideoDubbingApp, request_data: Dict[str, Any]):
     """پردازش ویدیو یوتیوب"""
