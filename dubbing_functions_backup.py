@@ -117,9 +117,20 @@ class VideoDubbingApp:
                 'no_warnings': False,
                 'quiet': False,
                 # 🔥 تنظیمات IPv6
-                'prefer_ipv6': True,  # اجبار به استفاده از IPv6
-                'source_address': '::',  # استفاده از IPv6 برای اتصال
+                'prefer_ipv6': True,
+                'source_address': '::',
+                # تنظیمات ساده
+                'retries': 1,
+                'fragment_retries': 1,
+                'extractor_retries': 1,
             }
+            
+            # فقط استفاده از cookies.txt
+            if os.path.exists('cookies.txt'):
+                video_opts['cookiefile'] = 'cookies.txt'
+                print("🍪 استفاده از فایل کوکی: cookies.txt")
+            else:
+                print("⚠️ فایل cookies.txt یافت نشد - دانلود بدون کوکی")
             
             with yt_dlp.YoutubeDL(video_opts) as ydl:
                 info = ydl.extract_info(url, download=True)

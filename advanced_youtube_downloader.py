@@ -61,72 +61,27 @@ class AdvancedYouTubeDownloader:
         return None
     
     def _create_advanced_config(self, method: str) -> Dict[str, Any]:
-        """ایجاد تنظیمات پیشرفته"""
+        """ایجاد تنظیمات ساده - فقط cookies"""
         base_config = {
             'nocheckcertificate': True,
             'ignoreerrors': True,
             'no_warnings': True,
             'quiet': True,
             # 🔥 تنظیمات IPv6
-            'prefer_ipv6': True,  # اجبار به استفاده از IPv6
-            'source_address': '::',  # استفاده از IPv6 برای اتصال
-            'user_agent': self._get_random_user_agent(),
-            'referer': 'https://www.youtube.com/',
+            'prefer_ipv6': True,
+            'source_address': '::',
             'socket_timeout': 30,
             'retries': 1,
             'fragment_retries': 1,
             'extractor_retries': 1,
-            'http_chunk_size': 1048576,
-            'headers': {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Cache-Control': 'max-age=0',
-            }
         }
         
-        if method == "mobile":
-            base_config.update({
-                'format': 'worst[height<=480]/worst',
-                'user_agent': random.choice([
-                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
-                    'Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
-                ]),
-                'headers': {
-                    **base_config['headers'],
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                }
-            })
-        elif method == "bot":
-            base_config.update({
-                'format': 'worst[height<=360]/worst',
-                'user_agent': random.choice([
-                    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-                    'Mozilla/5.0 (compatible; Bingbot/2.0; +http://www.bing.com/bingbot.htm)'
-                ]),
-            })
-        elif method == "minimal":
-            base_config.update({
-                'format': 'worst',
-                'user_agent': 'Mozilla/5.0 (compatible; yt-dlp)',
-                'headers': {
-                    'Accept': '*/*',
-                    'User-Agent': 'Mozilla/5.0 (compatible; yt-dlp)',
-                }
-            })
-        
-        # اضافه کردن پروکسی اگر موجود باشد
-        proxy = self._get_random_proxy()
-        if proxy:
-            base_config['proxy'] = proxy
-            print(f"🌐 استفاده از پروکسی: {proxy}")
+        # فقط اضافه کردن cookies.txt
+        if os.path.exists('cookies.txt'):
+            base_config['cookiefile'] = 'cookies.txt'
+            print("🍪 استفاده از فایل کوکی: cookies.txt")
+        else:
+            print("⚠️ فایل cookies.txt یافت نشد - دانلود بدون کوکی")
         
         return base_config
     

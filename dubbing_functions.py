@@ -121,7 +121,7 @@ class VideoDubbingApp:
             format_option = 'bestvideo+bestaudio/best'
             temp_filename = str(self.work_dir / 'temp_video.%(ext)s')
             
-            # تنظیمات پایه
+            # تنظیمات ساده - فقط cookies
             video_opts = {
                 'format': format_option,
                 'outtmpl': temp_filename,
@@ -130,53 +130,21 @@ class VideoDubbingApp:
                 'no_warnings': False,
                 'quiet': False,
                 # 🔥 تنظیمات IPv6
-                'prefer_ipv6': True,  # اجبار به استفاده از IPv6
-                'source_address': '::',  # استفاده از IPv6 برای اتصال
-                # تنظیمات مخصوص سرور لینوکس
-                'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'referer': 'https://www.youtube.com/',
-                'headers': {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'Accept-Charset': 'UTF-8,*;q=0.7',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
-                    'Sec-Fetch-User': '?1',
-                    'Cache-Control': 'max-age=0',
-                },
+                'prefer_ipv6': True,
+                'source_address': '::',
+                # تنظیمات ساده
                 'socket_timeout': 30,
-                'retries': 3,
-                'fragment_retries': 3,
-                'extractor_retries': 3,
-                'http_chunk_size': 10485760,  # 10MB chunks
+                'retries': 1,  # کاهش تلاش‌های مجدد
+                'fragment_retries': 1,
+                'extractor_retries': 1,
             }
             
-            # بررسی وجود فایل کوکی (اختیاری)
-            cookies_files = ['cookies.txt', 'cookies.text', 'cookies.json']
-            cookies_path = None
-            
-            for cookie_file in cookies_files:
-                if os.path.exists(cookie_file):
-                    cookies_path = cookie_file
-                    break
-            
-            # بررسی کوکی‌ها و تست اعتبار آن‌ها
-            if cookies_path:
-                # تست کوکی‌ها قبل از استفاده
-                if self._test_cookies_validity(cookies_path):
-                    if cookies_path.endswith('.txt') or cookies_path.endswith('.text'):
-                        video_opts['cookiefile'] = cookies_path
-                    elif cookies_path.endswith('.json'):
-                        video_opts['cookiefile'] = cookies_path
-                    print(f"🍪 استفاده از فایل کوکی معتبر: {cookies_path}")
-                else:
-                    print("⚠️ کوکی‌ها منقضی شده‌اند، استفاده بدون کوکی")
+            # فقط استفاده از cookies.txt
+            if os.path.exists('cookies.txt'):
+                video_opts['cookiefile'] = 'cookies.txt'
+                print("🍪 استفاده از فایل کوکی: cookies.txt")
             else:
-                print("🌐 استفاده از تنظیمات سرور لینوکس (بدون کوکی)")
+                print("⚠️ فایل cookies.txt یافت نشد - دانلود بدون کوکی")
             
             with yt_dlp.YoutubeDL(video_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
