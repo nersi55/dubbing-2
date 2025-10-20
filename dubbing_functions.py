@@ -1686,7 +1686,9 @@ SRT File:
                 font_path = self._get_font_path(font_name)
                 if font_path:
                     print(f"✅ فونت زیرنویس: {font_name} → {font_path}")
-                    font_name = font_path
+                    # برای libass، نام خانوادهٔ فونت بهتر از مسیر فایل است
+                    if font_name.lower() == 'vazirmatn':
+                        font_name = 'Vazirmatn'
                 else:
                     print(f"⚠️ فونت زیرنویس: {font_name} (فونت سیستم)")
                 
@@ -1777,7 +1779,7 @@ SRT File:
             font_path = self._get_font_path(font_name)
             if font_path:
                 print(f"✅ فونت متن ثابت: {font_name} → {font_path}")
-                final_font = font_path
+                final_font = 'Vazirmatn' if font_name.lower() == 'vazirmatn' else font_name
             else:
                 print(f"⚠️ فونت متن ثابت: {font_name} (فونت سیستم)")
                 final_font = font_name
@@ -1964,7 +1966,7 @@ Dialogue: 0,0:00:00.00,99:59:59.99,FixedText,,0,0,0,,{normalized_text}
             font_path = self._get_font_path(font_name)
             if font_path:
                 print(f"✅ فونت زیرنویس: {font_name} → {font_path}")
-                final_font = font_path
+                final_font = 'Vazirmatn' if font_name.lower() == 'vazirmatn' else font_name
             else:
                 print(f"⚠️ فونت زیرنویس: {font_name} (فونت سیستم)")
                 final_font = font_name
