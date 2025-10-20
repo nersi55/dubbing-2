@@ -2025,9 +2025,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 '\ufeff',  # BOM
                 '\u200e', '\u200f',  # LRM, RLM
                 '\u202a', '\u202b', '\u202c', '\u202d', '\u202e',  # bidi controls
+                '\u200b', '\u200c', '\u200d', '\u2060',  # zero-width chars (ZWS, ZWNJ, ZWJ, word joiner)
             ]
             for ch in control_chars:
-                text = text.replace(ch, '')
+                text = text.replace(ch, ' ' if ch in ['\u200b', '\u200c', '\u200d', '\u2060'] else '')
 
             # تبدیل فرم‌های نمایشی عربی به یونیکد سازگار (حل مشکل «لا»)
             # NFKC پرزنتیشن‌فرم‌ها را به حروف پایه تبدیل می‌کند
@@ -2045,8 +2046,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # حذف کشیده و حرکات عربی که ممکن است مربع نمایش داده شوند
             # Tatweel
             normalized_text = normalized_text.replace('\u0640', '')
-            # Harakat: 064B..065F
-            normalized_text = re.sub('[\u064B-\u065F]', '', normalized_text)
+            # Harakat: 064B..065F, 0670 (superscript alef), and Quranic marks 06D6..06ED
+            normalized_text = re.sub('[\u064B-\u065F\u0670\u06D6-\u06ED]', '', normalized_text)
 
             # جایگزینی کاراکترهای مشکل‌دار و نمونه‌های رایج
             replacements = {
