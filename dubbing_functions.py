@@ -1770,9 +1770,8 @@ SRT File:
             margin_bottom = config['margin_bottom']
             font_name = config.get('font', 'Arial')
             
-            # برای متن ثابت، نرمال‌سازی نکن تا از گاربل شدن جلوگیری شود
-            # normalized_text = self._normalize_persian_text(text)
-            normalized_text = text
+            # نرمال‌سازی ملایم برای جلوگیری از نمایش مربع (ligatures/harakat)
+            normalized_text = self._normalize_persian_text(text)
             
             # پیدا کردن فونت
             font_path = self._get_font_path(font_name)
@@ -2019,9 +2018,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         """نرمال‌سازی متن فارسی برای رندر بهتر"""
         try:
             import unicodedata
+            import re
             
-            # نرمال‌سازی متن فارسی
-            normalized_text = unicodedata.normalize('NFC', text)
+            # حذف BOM و کنترل‌های جهت‌دهی و فواصل صفرعرض مشکل‌زا
+            control_chars = [
+                '\ufeff',  # BOM
+                '\u200e', '\u200f',  # LRM, RLM
+                '\u202a', '\u202b', '\u202c', '\u202d', '\u202e',  # bidi controls
+            ]
+            for ch in control_chars:
+                text = text.replace(ch, '')
+
+            # تبدیل فرم‌های نمایشی عربی به یونیکد سازگار (حل مشکل «لا»)
+            # NFKC پرزنتیشن‌فرم‌ها را به حروف پایه تبدیل می‌کند
+            normalized_text = unicodedata.normalize('NFKC', text)
             
             # تبدیل کاراکترهای عربی به فارسی
             arabic_to_persian = {
@@ -2032,11 +2042,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             for arabic, persian in arabic_to_persian.items():
                 normalized_text = normalized_text.replace(arabic, persian)
             
-            # جایگزینی کاراکترهای مشکل‌دار و لیگاتورها
+            # حذف کشیده و حرکات عربی که ممکن است مربع نمایش داده شوند
+            # Tatweel
+            normalized_text = normalized_text.replace('\u0640', '')
+            # Harakat: 064B..065F
+            normalized_text = re.sub('[\u064B-\u065F]', '', normalized_text)
+
+            # جایگزینی کاراکترهای مشکل‌دار و نمونه‌های رایج
             replacements = {
                 'مثلا': 'مثلاً',   # تبدیل به شکل صحیح با لا
                 'مثلاًً': 'مثلاً',  # حذف لا اضافی
-                'لا': 'لا',        # اطمینان از رندر صحیح لا
+                # اطمینان از رندر صحیح لا با حروف پایه پس از NFKC
+                '\ufefb': 'لا', '\ufefc': 'لا',  # presentation forms
+                '\ufef7': 'لا', '\ufef8': 'لا',  # with hamza above
+                '\ufef5': 'لا', '\ufef6': 'لا',  # with maddah
                 'لی': 'لی',        # اطمینان از رندر صحیح لی
                 'لو': 'لو',        # اطمینان از رندر صحیح لو
                 'لر': 'لر',        # اطمینان از رندر صحیح لر
@@ -2054,8 +2073,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             for old, new in replacements.items():
                 normalized_text = normalized_text.replace(old, new)
             
-            # حذف کاراکترهای کنترل و غیرقابل چاپ
-            import re
+            # حذف کاراکترهای کنترل و غیرقابل چاپ باقیمانده
             normalized_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', normalized_text)
             
             return normalized_text
