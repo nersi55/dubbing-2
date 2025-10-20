@@ -142,27 +142,18 @@ def process_video_task(task_id: str, youtube_url: str):
         processing_tasks[task_id]["progress"] = 70
         processing_tasks[task_id]["message"] = "در حال ایجاد ویدیو با زیرنویس..."
         
-        # مرحله 4: ایجاد ویدیو با زیرنویس
-        random_filename = generate_random_filename()
-        
-        # تغییر نام فایل خروجی
-        original_create_method = dubbing_app.create_subtitled_video
-        def create_with_random_name(subtitle_config=None, fixed_text_config=None):
-            result = original_create_method(subtitle_config, fixed_text_config)
-            if result and os.path.exists(result):
-                new_path = dubbing_app.work_dir / random_filename
-                os.rename(result, str(new_path))
-                return str(new_path)
-            return result
-        
-        dubbing_app.create_subtitled_video = create_with_random_name
-        
+        # مرحله 4: ایجاد ویدیو با زیرنویس (با نام‌گذاری مبتنی بر YouTube ID)
+        try:
+            video_id = dubbing_app._extract_video_id(str(youtube_url))
+            if video_id:
+                dubbing_app.set_session_id(video_id)
+        except Exception:
+            pass
+
         output_path = dubbing_app.create_subtitled_video(
             subtitle_config=SUBTITLE_CONFIG,
             fixed_text_config=FIXED_TEXT_CONFIG
         )
-        
-        dubbing_app.create_subtitled_video = original_create_method
         
         if output_path and os.path.exists(output_path):
             processing_tasks[task_id]["status"] = "completed"

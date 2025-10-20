@@ -10,7 +10,6 @@ import subprocess
 import random
 import string
 from pathlib import Path
-from dubbing_functions import VideoDubbingApp
 
 # تنظیمات صفحه
 st.set_page_config(
@@ -108,23 +107,33 @@ FIXED_TEXT_CONFIG = {
     "enabled": True,
     "text": "ترجمه و زیرنویس ققنوس شانس",
     "font": "vazirmatn",
-    "fontsize": 9,  # اندازه فونت 9px
+    "fontsize": 18,  # افزایش اندازه فونت برای خوانایی بهتر
     "color": "yellow",
-    "background_color": "black",  # اضافه کردن زمینه سیاه برای خوانایی بهتر
+    "background_color": "none",
     "position": "bottom_center",
-    "margin_bottom": 2,  # فاصله از پایین 2px
+    "margin_bottom": 10,
     "opacity": 1.0,
-    "bold": True,
+    "bold": False,  # غیرفعال کردن bold برای جلوگیری از مشکل
     "italic": False
 }
 
-# ایجاد instance از کلاس دوبله
-try:
-    dubbing_app = VideoDubbingApp(API_KEY)
-    st.success("✅ اتصال به Google AI برقرار شد")
-except Exception as e:
-    st.error(f"❌ خطا در اتصال به Google AI: {str(e)}")
+# تابع برای ایجاد instance از کلاس دوبله
+@st.cache_resource
+def get_dubbing_app():
+    """ایجاد instance از کلاس دوبله با cache"""
+    try:
+        from dubbing_functions import VideoDubbingApp
+        return VideoDubbingApp(API_KEY)
+    except Exception as e:
+        st.error(f"❌ خطا در اتصال به Google AI: {str(e)}")
+        return None
+
+# بررسی اتصال
+dubbing_app = get_dubbing_app()
+if dubbing_app is None:
     st.stop()
+else:
+    st.success("✅ اتصال به Google AI برقرار شد")
 
 # فرم ورودی
 st.markdown('<div class="input-container">', unsafe_allow_html=True)
@@ -158,7 +167,6 @@ st.markdown("**📌 متن ثابت پایین:**")
 st.markdown("- **متن:** ترجمه و زیرنویس ققنوس شانس")
 st.markdown("- **فونت:** vazirmatn | **اندازه:** 9px | **رنگ:** زرد")
 st.markdown("- **موقعیت:** پایین وسط | **شفافیت:** 1.0 | **ضخیم:** بله")
-st.markdown("- **زمینه:** سیاه | **فاصله از پایین:** 2px")
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -196,56 +204,39 @@ if st.button("🚀 شروع پردازش ویدیو", type="primary", use_contai
         
         # مرحله 4: ایجاد ویدیو با زیرنویس
         with st.spinner("🎬 در حال ایجاد ویدیو با زیرنویس سفارشی..."):
+            # استخراج ID از لینک یوتیوب و ست کردن برای نام‌گذاری یکسان فایل‌ها
             try:
-                # ایجاد نام فایل رندم
-                random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-                random_filename = f"dubbed_video_{random_suffix}.mp4"
+                video_id = dubbing_app._extract_video_id(youtube_url)
+                if video_id:
+                    dubbing_app.set_session_id(video_id)
+            except Exception:
+                pass
+
+            output_path = dubbing_app.create_subtitled_video(
+                subtitle_config=SUBTITLE_CONFIG,
+                fixed_text_config=FIXED_TEXT_CONFIG
+            )
+            
+            if output_path and os.path.exists(output_path):
+                st.success("🎉 ویدیو با زیرنویس سفارشی با موفقیت ایجاد شد!")
                 
-                # تغییر نام فایل خروجی در کلاس
-                original_create_method = dubbing_app.create_subtitled_video
-                def create_with_random_name(subtitle_config=None, fixed_text_config=None):
-                    result = original_create_method(subtitle_config, fixed_text_config)
-                    if result and os.path.exists(result):
-                        # تغییر نام فایل
-                        new_path = dubbing_app.work_dir / random_filename
-                        os.rename(result, str(new_path))
-                        return str(new_path)
-                    return result
+                # نمایش اطلاعات فایل
+                file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+                st.info(f"📁 نام فایل: {os.path.basename(output_path)}")
+                st.info(f"📊 حجم فایل: {file_size:.2f} MB")
                 
-                # جایگزینی موقت متد
-                dubbing_app.create_subtitled_video = create_with_random_name
-                
-                output_path = dubbing_app.create_subtitled_video(
-                    subtitle_config=SUBTITLE_CONFIG,
-                    fixed_text_config=FIXED_TEXT_CONFIG
-                )
-                
-                # بازگردانی متد اصلی
-                dubbing_app.create_subtitled_video = original_create_method
-                
-                if output_path and os.path.exists(output_path):
-                    st.success("🎉 ویدیو با زیرنویس سفارشی با موفقیت ایجاد شد!")
-                    
-                    # نمایش اطلاعات فایل
-                    file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-                    st.info(f"📁 نام فایل: {os.path.basename(output_path)}")
-                    st.info(f"📊 حجم فایل: {file_size:.2f} MB")
-                    
-                    # دکمه دانلود
-                    with open(output_path, "rb") as file:
-                        st.download_button(
-                            label="📥 دانلود ویدیو با زیرنویس",
-                            data=file.read(),
-                            file_name=os.path.basename(output_path),
-                            mime="video/mp4",
-                            type="primary",
-                            use_container_width=True
-                        )
-                else:
-                    st.error("❌ خطا در ایجاد ویدیو با زیرنویس")
-            except Exception as e:
-                st.error(f"❌ خطا در ایجاد ویدیو با زیرنویس: {str(e)}")
-                st.error("لطفاً دوباره تلاش کنید یا تنظیمات را تغییر دهید.")
+                # دکمه دانلود
+                with open(output_path, "rb") as file:
+                    st.download_button(
+                        label="📥 دانلود ویدیو با زیرنویس",
+                        data=file.read(),
+                        file_name=os.path.basename(output_path),
+                        mime="video/mp4",
+                        type="primary",
+                        use_container_width=True
+                    )
+            else:
+                st.error("❌ خطا در ایجاد ویدیو با زیرنویس")
 
 # اطلاعات اضافی
 st.markdown("""

@@ -93,12 +93,64 @@ class VideoDubbingApp:
         self.work_dir.mkdir(exist_ok=True)
         self.segments_dir = self.work_dir / "dubbed_segments"
         self.segments_dir.mkdir(exist_ok=True)
+        # Shared session identifier used for naming outputs (YouTube ID or derived local ID)
+        self.session_id: Optional[str] = None
+
+    # ===== Session/ID helpers =====
+    def set_session_id(self, id_str: str) -> None:
+        """Set a stable identifier for naming SRTs and output videos."""
+        try:
+            if not id_str:
+                return
+            # Sanitize: keep only safe filename chars
+            safe = re.sub(r"[^a-zA-Z0-9_-]", "", id_str)
+            if not safe:
+                return
+            # Keep it reasonably short
+            self.session_id = safe[:32]
+        except Exception:
+            pass
+
+    def _generate_random_id(self, length: int = 5) -> str:
+        import random, string
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+    def _ensure_session_id(self) -> None:
+        if not self.session_id:
+            self.session_id = self._generate_random_id(5)
+
+    def set_session_id_from_local_path(self, file_path: str) -> None:
+        """Derive identifier from local filename stem, fallback to random if too short."""
+        try:
+            stem = Path(file_path).stem
+            stem = re.sub(r"[^a-zA-Z0-9_-]", "", stem)
+            if len(stem) < 6:
+                stem = f"{stem}_{self._generate_random_id(5)}" if stem else self._generate_random_id(5)
+            self.set_session_id(stem[:11])
+        except Exception:
+            self._ensure_session_id()
+
+    # ===== Path helpers (ID-aware with legacy fallback) =====
+    def _srt_en_path(self) -> Path:
+        if self.session_id:
+            return self.work_dir / f"audio_{self.session_id}.srt"
+        return self.work_dir / 'audio.srt'
+
+    def _srt_fa_path(self) -> Path:
+        if self.session_id:
+            return self.work_dir / f"audio_{self.session_id}_fa.srt"
+        return self.work_dir / 'audio_fa.srt'
+
+    def _output_video_path(self) -> Path:
+        # Unified final output name
+        if self.session_id:
+            return self.work_dir / f"dubbed_video_{self.session_id}.mp4"
+        return self.work_dir / 'dubbed_video.mp4'
         
     def clean_previous_files(self):
         """پاکسازی فایل‌های قبلی"""
         files_to_clean = [
-            "input_video.mp4", "audio.wav", "audio.srt", 
-            "audio_fa.srt", "final_dubbed_video.mp4"
+            "input_video.mp4", "audio.wav", "final_dubbed_video.mp4"
         ]
         
         for file_name in files_to_clean:
@@ -114,6 +166,13 @@ class VideoDubbingApp:
     def download_youtube_video(self, url: str) -> bool:
         """دانلود ویدیو از یوتیوب - نسخه بهینه شده برای سرور لینوکس"""
         try:
+            # Set session id from YouTube URL (11-char ID) when available
+            try:
+                vid = self._extract_video_id(url)
+                if vid:
+                    self.set_session_id(vid)
+            except Exception:
+                pass
             # Clean previous files
             for file in self.work_dir.glob('temp_video*'):
                 file.unlink()
@@ -449,6 +508,8 @@ class VideoDubbingApp:
                 return False
             
             print(f"📺 شناسه ویدیو: {video_id}")
+            # Keep the session id aligned with video id
+            self.set_session_id(video_id)
             
             # Validate video with YouTube API if available
             if self.youtube_client and not self.validate_youtube_video(url):
@@ -565,7 +626,7 @@ class VideoDubbingApp:
                     srt_content.append(f"{i+1}\n{start_str} --> {end_str}\n{entry['text']}\n")
                 
                 # Save SRT file
-                srt_path = self.work_dir / 'audio.srt'
+                srt_path = self._srt_en_path()
                 with open(srt_path, 'w', encoding='utf-8') as f:
                     f.write('\n'.join(srt_content))
                 
@@ -640,7 +701,17 @@ class VideoDubbingApp:
                 print("❌ هیچ بخش معتبری برای ذخیره یافت نشد")
                 return False
             
-            srt_path = self.work_dir / 'audio.srt'
+            # Ensure we have an id for naming when running locally
+            if not self.session_id:
+                try:
+                    # Derive from existing input_video if possible
+                    possible_input = self.work_dir / 'input_video.mp4'
+                    if possible_input.exists():
+                        self.set_session_id_from_local_path(str(possible_input))
+                except Exception:
+                    self._ensure_session_id()
+
+            srt_path = self._srt_en_path()
             with open(srt_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(srt_content))
             
@@ -656,7 +727,7 @@ class VideoDubbingApp:
     def compress_srt_dialogues(self, merge_count: int = 3) -> bool:
         """فشرده‌سازی دیالوگ‌های SRT"""
         try:
-            srt_path = self.work_dir / 'audio.srt'
+            srt_path = self._srt_en_path()
             if not srt_path.exists():
                 return False
             
@@ -727,7 +798,7 @@ class VideoDubbingApp:
     def translate_subtitles(self, target_language: str = "Persian (FA)") -> bool:
         """ترجمه زیرنویس‌ها - ترجمه کامل فایل SRT در یک درخواست"""
         try:
-            srt_path = self.work_dir / 'audio.srt'
+            srt_path = self._srt_en_path()
             if not srt_path.exists():
                 return False
             
@@ -805,7 +876,7 @@ SRT File:
             translated_content = translate_entire_srt_with_fallback(srt_content)
             
             # ذخیره فایل ترجمه شده
-            translated_path = self.work_dir / 'audio_fa.srt'
+            translated_path = self._srt_fa_path()
             with open(translated_path, 'w', encoding='utf-8') as f:
                 f.write(translated_content)
             
@@ -903,7 +974,7 @@ SRT File:
                             speech_prompt: str = "", sleep_between_requests: int = 30) -> bool:
         """ایجاد سگمنت‌های صوتی با مدیریت هوشمند محدودیت‌ها"""
         try:
-            srt_path = self.work_dir / 'audio_fa.srt'
+            srt_path = self._srt_fa_path()
             if not srt_path.exists():
                 return False
             
@@ -1015,7 +1086,7 @@ SRT File:
         """ایجاد ویدیو نهایی دوبله شده"""
         try:
             video_path = self.work_dir / 'input_video.mp4'
-            srt_path = self.work_dir / 'audio_fa.srt'
+            srt_path = self._srt_fa_path()
             
             if not video_path.exists() or not srt_path.exists():
                 print("❌ فایل ویدیو یا زیرنویس یافت نشد")
@@ -1103,7 +1174,7 @@ SRT File:
                 
                 # Create final video using the working method
                 print("🎬 ایجاد ویدیو نهایی...")
-                output_path = self.work_dir / 'final_dubbed_video.mp4'
+                output_path = self._output_video_path()
                 
                 # روش کارآمد: استفاده از concat برای ترکیب فایل‌های صوتی
                 # ابتدا فایل لیست صوتی ایجاد می‌کنیم
@@ -1521,7 +1592,7 @@ SRT File:
         """ایجاد ویدیو با زیرنویس ترجمه شده و متن ثابت پایین"""
         try:
             video_path = self.work_dir / 'input_video.mp4'
-            srt_path = self.work_dir / 'audio_fa.srt'
+            srt_path = self._srt_fa_path()
             
             if not video_path.exists() or not srt_path.exists():
                 print("❌ فایل ویدیو یا زیرنویس یافت نشد")
@@ -1606,7 +1677,7 @@ SRT File:
                     f.write(normalized_content)
                 
                 # ایجاد ویدیو با زیرنویس
-                output_path = self.work_dir / 'custom_subtitled_video.mp4'
+                output_path = self._output_video_path()
                 print("🎬 ایجاد ویدیو با زیرنویس...")
                 
                 # ساخت فیلتر زیرنویس

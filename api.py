@@ -70,6 +70,7 @@ class YouTubeDownloadRequest(BaseModel):
     tts_model: str = Field(default="gemini-2.5-flash-preview-tts", description="مدل TTS")
     sleep_between_requests: int = Field(default=30, description="زمان انتظار بین درخواست‌ها")
     extraction_method: str = Field(default="whisper", description="روش استخراج متن (whisper/youtube)")
+    session_id: Optional[str] = Field(default=None, description="شناسه سفارشی برای نام‌گذاری خروجی‌ها")
 
 class SubtitleRequest(BaseModel):
     """درخواست ایجاد زیرنویس"""
@@ -138,6 +139,12 @@ async def process_video_workflow(job_id: str, dubbing_app: VideoDubbingApp,
         # مرحله 1: استخراج صدا
         update_job_status(job_id, "processing", 10, "extracting_audio", "استخراج صدا از ویدیو...")
         audio_path = dubbing_app.work_dir / 'audio.wav'
+        # اگر session_id ست نشده بود، از مسیر ویدیو محلی یک شناسه مشتق کنیم
+        try:
+            if not getattr(dubbing_app, 'session_id', None):
+                dubbing_app.set_session_id_from_local_path(video_path)
+        except Exception:
+            pass
         if not audio_path.exists():
             raise Exception("فایل صوتی یافت نشد")
         
@@ -242,7 +249,8 @@ async def upload_video(
     enable_compression: bool = Form(default=True),
     merge_count: int = Form(default=5),
     tts_model: str = Form(default="gemini-2.5-flash-preview-tts"),
-    sleep_between_requests: int = Form(default=30)
+    sleep_between_requests: int = Form(default=30),
+    session_id: Optional[str] = Form(default=None)
 ):
     """آپلود ویدیو و شروع پردازش"""
     try:
@@ -258,6 +266,15 @@ async def upload_video(
             content = await file.read()
             buffer.write(content)
         
+        # تعیین session_id از نام فایل لوکال در صورت ارائه یا پارامتر اختیاری
+        try:
+            if session_id:
+                dubbing_app.set_session_id(session_id)
+            else:
+                dubbing_app.set_session_id_from_local_path(file.filename or str(video_path))
+        except Exception:
+            pass
+
         # استخراج صدا
         audio_path = dubbing_app.work_dir / 'audio.wav'
         import subprocess
@@ -338,6 +355,16 @@ async def process_youtube_workflow(job_id: str, dubbing_app: VideoDubbingApp, re
         # مرحله 1: دانلود ویدیو
         update_job_status(job_id, "processing", 10, "downloading", "دانلود ویدیو از یوتیوب...")
         youtube_url = request_data['youtube_url']
+        # ست کردن session_id از پارامتر یا از خود URL
+        try:
+            if request_data.get('session_id'):
+                dubbing_app.set_session_id(request_data['session_id'])
+            else:
+                vid = dubbing_app._extract_video_id(youtube_url)
+                if vid:
+                    dubbing_app.set_session_id(vid)
+        except Exception:
+            pass
         success = dubbing_app.download_youtube_video(youtube_url)
         if not success:
             raise Exception("خطا در دانلود ویدیو از یوتیوب")
