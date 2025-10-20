@@ -107,7 +107,7 @@ FIXED_TEXT_CONFIG = {
     "enabled": True,
     "text": "ترجمه و زیرنویس ققنوس شانس",
     "font": "vazirmatn",
-    "fontsize": 18,  # افزایش اندازه فونت برای خوانایی بهتر
+    "fontsize": 9,  # کاهش اندازه فونت طبق درخواست
     "color": "yellow",
     "background_color": "none",
     "position": "bottom_center",
