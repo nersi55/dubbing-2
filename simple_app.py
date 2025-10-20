@@ -5,6 +5,8 @@ Simple Auto Video Dubbing Page - YouTube URL Only
 
 import streamlit as st
 import os
+import io
+import csv
 import tempfile
 import subprocess
 import random
@@ -137,13 +139,16 @@ else:
 
 # فرم ورودی
 st.markdown('<div class="input-container">', unsafe_allow_html=True)
-st.markdown("### 🔗 لینک ویدیو یوتیوب")
+st.markdown("### 🔗 لینک ویدیو یوتیوب یا فایل CSV فهرست لینک‌ها")
 youtube_url = st.text_input(
     "آدرس ویدیو یوتیوب را اینجا وارد کنید:",
     placeholder="https://youtube.com/watch?v=...",
     help="لینک کامل ویدیو یوتیوب را اینجا وارد کنید",
     label_visibility="collapsed"
 )
+
+# ورودی جایگزین: آپلود CSV حاوی لیست لینک‌ها
+csv_file = st.file_uploader("یا فایل CSV شامل لیست لینک‌های یوتیوب را آپلود کنید", type=["csv"])
 
 # نمایش تنظیمات ثابت
 with st.expander("⚙️ تنظیمات ثابت (غیرقابل تغییر)"):
@@ -170,73 +175,104 @@ st.markdown("- **موقعیت:** پایین وسط | **شفافیت:** 1.0 | **�
 
 st.markdown('</div>', unsafe_allow_html=True)
 
+"""
+پردازش: از یک URL یا CSV چند URL
+"""
 # دکمه شروع پردازش
-if st.button("🚀 شروع پردازش ویدیو", type="primary", use_container_width=True):
-    if not youtube_url:
-        st.error("❌ لطفاً لینک ویدیو یوتیوب را وارد کنید")
-    else:
-        # مرحله 1: دانلود ویدیو
-        with st.spinner("📥 در حال دانلود ویدیو از یوتیوب..."):
-            success = dubbing_app.download_youtube_video(youtube_url)
-            if not success:
-                st.error("❌ خطا در دانلود ویدیو")
-                st.stop()
-        
-        st.success("✅ ویدیو با موفقیت دانلود شد")
-        
-        # مرحله 2: استخراج متن با Whisper
-        with st.spinner("🔍 در حال استخراج متن با Whisper..."):
-            success = dubbing_app.extract_audio_with_whisper()
-            if not success:
-                st.error("❌ خطا در استخراج متن")
-                st.stop()
-        
-        st.success("✅ متن با موفقیت استخراج شد")
-        
-        # مرحله 3: ترجمه (فشرده‌سازی غیرفعال)
-        with st.spinner("🌐 در حال ترجمه زیرنویس‌ها به فارسی..."):
-            success = dubbing_app.translate_subtitles(TARGET_LANGUAGE)
-            if not success:
-                st.error("❌ خطا در ترجمه")
-                st.stop()
-        
-        st.success("✅ زیرنویس‌ها به فارسی ترجمه شدند")
-        
-        # مرحله 4: ایجاد ویدیو با زیرنویس
-        with st.spinner("🎬 در حال ایجاد ویدیو با زیرنویس سفارشی..."):
-            # استخراج ID از لینک یوتیوب و ست کردن برای نام‌گذاری یکسان فایل‌ها
+if st.button("🚀 شروع پردازش", type="primary", use_container_width=True):
+    urls = []
+    if csv_file is not None:
+        try:
+            text_io = io.StringIO(csv_file.getvalue().decode("utf-8"))
+            # تلاش برای خواندن با هدر
+            reader = csv.DictReader(text_io)
+            selected = None
+            if reader.fieldnames:
+                fields = [f.strip().lower() for f in reader.fieldnames]
+                for c in ["youtube_short_url", "url", "youtube_url"]:
+                    if c in fields:
+                        selected = c
+                        break
+            if selected:
+                for row in reader:
+                    u = (row.get(selected) or "").strip()
+                    if u:
+                        urls.append(u)
+            else:
+                # بدون هدر: هر خط یک URL
+                text_io.seek(0)
+                for line in text_io:
+                    line = line.strip()
+                    if line.startswith("http"):
+                        urls.append(line)
+        except Exception as e:
+            st.error(f"❌ خطا در خواندن CSV: {e}")
+            st.stop()
+    elif youtube_url:
+        urls = [youtube_url]
+
+    if not urls:
+        st.error("❌ لطفاً یک لینک یا فایل CSV معتبر وارد/آپلود کنید")
+        st.stop()
+
+    results = []
+    total = len(urls)
+    progress = st.progress(0)
+
+    for idx, url in enumerate(urls, start=1):
+        st.write(f"[{idx}/{total}] پردازش: {url}")
+        progress.progress(min(int(idx / total * 100), 100))
+
+        # 1) دانلود
+        with st.spinner("📥 دانلود ویدیو..."):
+            if not dubbing_app.download_youtube_video(url):
+                results.append((url, "download_failed"))
+                continue
+
+        # 2) استخراج متن
+        with st.spinner("🔍 استخراج متن..."):
+            if not dubbing_app.extract_audio_with_whisper():
+                results.append((url, "transcript_failed"))
+                continue
+
+        # 3) ترجمه
+        with st.spinner("🌐 ترجمه زیرنویس..."):
+            if not dubbing_app.translate_subtitles(TARGET_LANGUAGE):
+                results.append((url, "translate_failed"))
+                continue
+
+        # 4) ایجاد ویدیو با زیرنویس
+        with st.spinner("🎬 ساخت ویدیو با زیرنویس..."):
             try:
-                video_id = dubbing_app._extract_video_id(youtube_url)
-                if video_id:
-                    dubbing_app.set_session_id(video_id)
+                vid = dubbing_app._extract_video_id(url)
+                if vid:
+                    dubbing_app.set_session_id(vid)
             except Exception:
                 pass
 
-            output_path = dubbing_app.create_subtitled_video(
+            out = dubbing_app.create_subtitled_video(
                 subtitle_config=SUBTITLE_CONFIG,
                 fixed_text_config=FIXED_TEXT_CONFIG
             )
-            
-            if output_path and os.path.exists(output_path):
-                st.success("🎉 ویدیو با زیرنویس سفارشی با موفقیت ایجاد شد!")
-                
-                # نمایش اطلاعات فایل
-                file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-                st.info(f"📁 نام فایل: {os.path.basename(output_path)}")
-                st.info(f"📊 حجم فایل: {file_size:.2f} MB")
-                
-                # دکمه دانلود
-                with open(output_path, "rb") as file:
-                    st.download_button(
-                        label="📥 دانلود ویدیو با زیرنویس",
-                        data=file.read(),
-                        file_name=os.path.basename(output_path),
-                        mime="video/mp4",
-                        type="primary",
-                        use_container_width=True
-                    )
-            else:
-                st.error("❌ خطا در ایجاد ویدیو با زیرنویس")
+            if not out or not os.path.exists(out):
+                results.append((url, "video_failed"))
+                continue
+
+            file_size = os.path.getsize(out) / (1024 * 1024)
+            st.success(f"✅ آماده: {os.path.basename(out)} | {file_size:.2f} MB")
+            with open(out, "rb") as file:
+                st.download_button(
+                    label=f"دانلود {os.path.basename(out)}",
+                    data=file.read(),
+                    file_name=os.path.basename(out),
+                    mime="video/mp4",
+                    key=f"dl_{idx}",
+                    use_container_width=True
+                )
+            results.append((url, f"ok:{os.path.basename(out)}"))
+
+    ok = sum(1 for _, r in results if str(r).startswith("ok"))
+    st.info(f"نتیجه نهایی: {ok}/{len(results)} موفق")
 
 # اطلاعات اضافی
 st.markdown("""
