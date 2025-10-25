@@ -828,7 +828,7 @@ class VideoDubbingApp:
                         
                         if target_language == "Persian (FA)":
                             prompt = f"""متن کامل فایل SRT زیر را که شامل زیرنویس‌های یک ویدیو به زبان انگلیسی است، به دقت مطالعه کن تا کاملاً متوجه موضوع و مفهوم کلی آن شوی.
-پس از درک کامل محتوا، هر خط از متن زیرنویس (بخش انگلیسی) را به فارسی بسیار روان، طبیعی و قابل فهم برای مخاطب عمومی ترجمه کن. ترجمه نباید حالت ماشینی داشته باشد و باید شبیه متنی باشد که یک فارسی‌زبان بومی می‌نوشت. پیام اصلی هر خط را بدون هیچ گونه ابهام یا دشواری در درک منتقل کن.
+پس از درک کامل محتوا، هر خط از متن زیرنویس (بخش انگلیسی) را به فارسی بسیار روان، طبیعی و قابل فهم برای مخاطب عمومی ترجمه کن. ترجمه . پیام اصلی هر خط را بدون هیچ گونه ابهام یا دشواری در درک منتقل کن.
 نکات بسیار مهم:
 حفظ ساختار SRT: لطفاً ساختار زمانی فایل SRT را دقیقاً حفظ کن. یعنی هر خط ترجمه فارسی باید دقیقاً مقابل خط اصلی انگلیسی و با همان شماره و زمان‌بندی قرار گیرد. فقط متن انگلیسی را ترجمه کن و اعداد و زمان‌بندی را بدون تغییر کپی کن.
 حفظ اعداد در متن ترجمه: هر عدد یا رقمی که در متن انگلیسی زیرنویس وجود دارد (مثلاً "Gemma 3N", "version 2.5", "100 meters", "5G connectivity")، باید دقیقاً و بدون تغییر در ترجمه فارسی نیز آورده شود. اعداد را ترجمه یا حذف نکن.
@@ -1680,7 +1680,7 @@ SRT File:
                 output_path = self._output_video_path()
                 print("🎬 ایجاد ویدیو با زیرنویس...")
                 
-                # ساخت فیلتر زیرنویس
+                # ساخت فیلتر زیرنویس با فایل ASS سفارشی
                 # پیدا کردن مسیر فونت
                 font_name = sub_config['font']
                 font_path = self._get_font_path(font_name)
@@ -1692,28 +1692,12 @@ SRT File:
                 else:
                     print(f"⚠️ فونت زیرنویس: {font_name} (فونت سیستم)")
                 
-                subtitle_style_parts = [
-                    f"FontName={font_name}",
-                    f"FontSize={sub_config['fontsize']}",
-                    f"PrimaryColour=&H{self._color_to_hex(sub_config['color'])}",
-                    f"OutlineColour=&H{self._color_to_hex(sub_config['outline_color'])}",
-                    f"Outline={sub_config['outline_width']}",
-                    f"MarginV={sub_config['margin_v']}",
-                    f"Shadow={sub_config['shadow']}",
-                    f"ShadowColour=&H{self._color_to_hex(sub_config['shadow_color'])}",
-                    f"Bold={1 if sub_config['bold'] else 0}",
-                    f"Italic={1 if sub_config['italic'] else 0}",
-                    f"Alignment={self._get_alignment(sub_config['position'])}"
-                ]
+                # ایجاد فایل ASS سفارشی برای کنترل بهتر موقعیت
+                temp_ass = temp_dir / "custom_subtitles.ass"
+                self._create_custom_ass_file(temp_ass, temp_srt, sub_config, font_name)
                 
-                # اضافه کردن رنگ زمینه اگر انتخاب شده باشد
-                if sub_config['background_color'] != 'none':
-                    subtitle_style_parts.append(f"BackColour=&H{self._color_to_hex(sub_config['background_color'])}")
-                    subtitle_style_parts.append("BorderStyle=4")  # جعبه گرد
-                
-                # استفاده از فیلتر subtitles با تنظیمات بهینه برای فارسی
-                # Use single quotes for force_style parameter
-                subtitle_filter = f"subtitles={temp_srt.absolute()}:force_style='{','.join(subtitle_style_parts)}'"
+                # استفاده از فایل ASS سفارشی
+                subtitle_filter = f"subtitles={temp_ass.absolute()}"
                 
                 # ساخت فیلترهای ترکیبی
                 if fixed_config['enabled'] and fixed_config['text'].strip():
@@ -1847,13 +1831,13 @@ SRT File:
                 margin_v = margin_bottom
             elif position == 'top_center':
                 alignment = 8  # top center
-                margin_v = 10
+                margin_v = config.get('margin_v', 10)
             elif position == 'top_left':
                 alignment = 7  # top left
-                margin_v = 10
+                margin_v = config.get('margin_v', 10)
             elif position == 'top_right':
                 alignment = 9  # top right
-                margin_v = 10
+                margin_v = config.get('margin_v', 10)
             else:
                 alignment = 2  # center
                 margin_v = margin_bottom
@@ -2233,6 +2217,117 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         }
         return color_map.get(color_name.lower(), "ffffff")
     
+    def _create_custom_ass_file(self, ass_path, srt_path, config, font_name):
+        """ایجاد فایل ASS سفارشی برای کنترل بهتر موقعیت زیرنویس"""
+        try:
+            # خواندن فایل SRT
+            srt_content = srt_path.read_text(encoding='utf-8')
+            
+            # تنظیم موقعیت و alignment
+            position = config.get('position', 'bottom_center')
+            if position == 'top_center':
+                alignment = 8  # top center
+                margin_v = config.get('margin_v', 0)
+            elif position == 'top_left':
+                alignment = 7  # top left
+                margin_v = config.get('margin_v', 0)
+            elif position == 'top_right':
+                alignment = 9  # top right
+                margin_v = config.get('margin_v', 0)
+            elif position == 'bottom_center':
+                alignment = 2  # bottom center
+                margin_v = config.get('margin_v', 20)
+            elif position == 'bottom_left':
+                alignment = 1  # bottom left
+                margin_v = config.get('margin_v', 20)
+            elif position == 'bottom_right':
+                alignment = 3  # bottom right
+                margin_v = config.get('margin_v', 20)
+            else:
+                alignment = 2  # default bottom center
+                margin_v = config.get('margin_v', 20)
+            
+            # تنظیم رنگ متن (BGR format)
+            color_hex = self._color_to_hex(config['color'])
+            r = color_hex[4:6]
+            g = color_hex[2:4]
+            b = color_hex[0:2]
+            text_color = f"&H{b}{g}{r}&"
+            
+            # تنظیم رنگ حاشیه
+            outline_color_hex = self._color_to_hex(config['outline_color'])
+            outline_r = outline_color_hex[4:6]
+            outline_g = outline_color_hex[2:4]
+            outline_b = outline_color_hex[0:2]
+            outline_color = f"&H{outline_b}{outline_g}{outline_r}&"
+            
+            # تنظیم رنگ زمینه
+            if config.get('background_color', 'none') != 'none':
+                bg_color_hex = self._color_to_hex(config['background_color'])
+                bg_r = bg_color_hex[4:6]
+                bg_g = bg_color_hex[2:4]
+                bg_b = bg_color_hex[0:2]
+                bg_color = f"&H{bg_b}{bg_g}{bg_r}&"
+                border_style = 4  # rounded box
+            else:
+                bg_color = "&H000000&"  # transparent
+                border_style = 0  # no box
+            
+            # تنظیم سایه
+            if config.get('shadow', 0) > 0:
+                shadow_color_hex = self._color_to_hex(config['shadow_color'])
+                sr = shadow_color_hex[4:6]
+                sg = shadow_color_hex[2:4]
+                sb = shadow_color_hex[0:2]
+                shadow_color = f"&H{sb}{sg}{sr}&"
+                shadow = config['shadow']
+            else:
+                shadow_color = "&H000000&"
+                shadow = 0
+            
+            # ایجاد محتوای فایل ASS
+            ass_content = f"""[Script Info]
+Title: Custom Subtitles
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,{font_name},{config['fontsize']},{text_color},{text_color},{outline_color},{bg_color},{1 if config.get('bold', False) else 0},{1 if config.get('italic', False) else 0},0,0,100,100,0,0,{border_style},{config.get('outline_width', 0)},{shadow},{alignment},10,10,{margin_v},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+            
+            # تبدیل SRT به ASS
+            import re
+            srt_pattern = r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.*?)(?=\n\d+\n|\Z)'
+            matches = re.findall(srt_pattern, srt_content, re.DOTALL)
+            
+            for match in matches:
+                index, start_time, end_time, text = match
+                # تبدیل فرمت زمان SRT به ASS
+                start_ass = start_time.replace(',', '.')
+                end_ass = end_time.replace(',', '.')
+                
+                # پاک‌سازی متن
+                clean_text = text.strip().replace('\n', '\\N')
+                
+                # اضافه کردن خط به فایل ASS
+                ass_content += f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{clean_text}\n"
+            
+            # نوشتن فایل ASS
+            with open(ass_path, 'w', encoding='utf-8') as f:
+                f.write(ass_content)
+                
+            print(f"✅ فایل ASS سفارشی ایجاد شد: {ass_path}")
+            print(f"   📍 موقعیت: {position} (alignment: {alignment})")
+            print(f"   📏 فاصله: {margin_v}px")
+            
+        except Exception as e:
+            print(f"❌ خطا در ایجاد فایل ASS سفارشی: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
     def _get_alignment(self, position: str) -> int:
         """تبدیل موقعیت به کد alignment برای FFmpeg"""
         # FFmpeg subtitle alignment codes:
