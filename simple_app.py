@@ -92,15 +92,15 @@ OUTPUT_TYPE = "زیرنویس ترجمه شده"
 SUBTITLE_CONFIG = {
     "font": "vazirmatn",
     "fontsize": 14,
-    "color": "white",
-    "background_color": "black",
-    "outline_color": "black",
-    "outline_width": 0,
+    "color": "black",
+    "background_color": "none",
+    "outline_color": "white",
+    "outline_width": 1,
     "position": "bottom_center",
-    "margin_v": 20,
+    "margin_v": 40,
     "shadow": 0,
     "shadow_color": "black",
-    "bold": False,
+    "bold": True,
     "italic": False
 }
 
@@ -164,9 +164,9 @@ with st.expander("⚙️ تنظیمات ثابت (غیرقابل تغییر)"):
         st.markdown("**📝 نوع خروجی:** زیرنویس ترجمه شده")
         st.markdown("**🎨 فونت زیرنویس:** vazirmatn")
         st.markdown("**📏 اندازه:** 14px")
-        st.markdown("**🎨 رنگ:** سفید")
-        st.markdown("**🖤 زمینه:** سیاه")
-        st.markdown("**📌 حاشیه:** 0px سیاه")
+        st.markdown("**🎨 رنگ:** مشکی")
+        st.markdown("**🖤 زمینه:** شفاف")
+        st.markdown("**📌 حاشیه:** 2px سفید")
 
 st.markdown("**📌 متن ثابت پایین:**")
 st.markdown("- **متن:** ترجمه و زیرنویس ققنوس شانس")
