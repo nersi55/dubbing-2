@@ -179,36 +179,73 @@ class VideoDubbingApp:
             
             format_option = 'bestvideo+bestaudio/best'
             temp_filename = str(self.work_dir / 'temp_video.%(ext)s')
-            
-            # تنظیمات ساده - فقط cookies
-            video_opts = {
+
+            # استراتژی‌های چندگانه دانلود با استفاده از کوکی‌ها
+            strategies = []
+            base_opts = {
                 'format': format_option,
                 'outtmpl': temp_filename,
                 'nocheckcertificate': True,
                 'ignoreerrors': False,
                 'no_warnings': False,
                 'quiet': False,
-                # 🔥 تنظیمات IPv6
-                'prefer_ipv6': True,
-                'source_address': '::',
-                # تنظیمات ساده
                 'socket_timeout': 30,
-                'retries': 1,  # کاهش تلاش‌های مجدد
+                'retries': 1,
                 'fragment_retries': 1,
                 'extractor_retries': 1,
             }
-            
-            # فقط استفاده از cookies.txt
+
+            # افزودن کوکی اگر موجود است
             if os.path.exists('cookies.txt'):
-                video_opts['cookiefile'] = 'cookies.txt'
+                base_opts['cookiefile'] = 'cookies.txt'
                 print("🍪 استفاده از فایل کوکی: cookies.txt")
             else:
                 print("⚠️ فایل cookies.txt یافت نشد - دانلود بدون کوکی")
+
+            # 1) IPv6 + پیش‌فرض
+            s1 = {**base_opts, 'prefer_ipv6': True, 'source_address': '::'}
+            strategies.append(("IPv6+Default", s1))
+
+            # 2) IPv4 + Chrome UA
+            s2 = {**base_opts,
+                  'prefer_ipv6': False,
+                  'source_address': '0.0.0.0',
+                  'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'referer': 'https://www.youtube.com/'}
+            strategies.append(("IPv4+Chrome", s2))
+
+            # 3) IPv4 + Googlebot UA (گاهی 403 را دور می‌زند)
+            s3 = {**base_opts,
+                  'prefer_ipv6': False,
+                  'source_address': '0.0.0.0',
+                  'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                  'referer': 'https://www.youtube.com/'}
+            strategies.append(("IPv4+Googlebot", s3))
+
+            downloaded_file = None
+            last_error = None
+            for name, opts in strategies:
+                try:
+                    print(f"🧪 تلاش دانلود با استراتژی: {name} ...")
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        info = ydl.extract_info(url, download=True)
+                        downloaded_file = ydl.prepare_filename(info)
+                    if downloaded_file and os.path.exists(downloaded_file):
+                        print(f"✅ دانلود موفق با {name}")
+                        break
+                except Exception as e:
+                    last_error = str(e)
+                    print(f"❌ استراتژی {name} شکست خورد: {str(e)[:120]}...")
+                    continue
             
-            with yt_dlp.YoutubeDL(video_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                downloaded_file = ydl.prepare_filename(info)
-            
+            if not downloaded_file:
+                # اگر هیچ‌کدام موفق نشد، استراتژی‌های موجود کار نکردند
+                if last_error:
+                    print(f"❌ همه استراتژی‌ها شکست خوردند. آخرین خطا: {last_error[:200]}...")
+                else:
+                    print("❌ همه استراتژی‌ها شکست خوردند.")
+                raise Exception("strategies_failed")
+
             if os.path.exists(downloaded_file):
                 _, file_extension = os.path.splitext(downloaded_file)
                 final_filename = self.work_dir / f'input_video{file_extension}'
