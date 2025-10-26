@@ -1623,7 +1623,8 @@ SRT File:
                     "shadow": 0,
                     "shadow_color": "black",
                     "bold": False,
-                    "italic": False
+                    "italic": False,
+                    "time_offset_ms": 0
                 }
                 
                 # تنظیمات پیش‌فرض متن ثابت - استفاده از فونت فارسی
@@ -1710,7 +1711,8 @@ SRT File:
                     subprocess.run([
                         'ffmpeg', '-i', str(video_path),
                         '-vf', subtitle_filter,
-                        '-c:v', 'libx264', '-c:a', 'copy',
+                        '-af', 'asetpts=PTS-STARTPTS',
+                        '-c:v', 'libx264', '-c:a', 'aac',
                         '-y', str(temp_video)
                     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     
@@ -1720,7 +1722,8 @@ SRT File:
                         subprocess.run([
                             'ffmpeg', '-i', str(temp_video),
                             '-vf', fixed_text_filter,
-                            '-c:v', 'libx264', '-c:a', 'copy',
+                            '-af', 'asetpts=PTS-STARTPTS',
+                            '-c:v', 'libx264', '-c:a', 'aac',
                             '-y', str(output_path)
                         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     else:
@@ -1732,7 +1735,8 @@ SRT File:
                     subprocess.run([
                         'ffmpeg', '-i', str(video_path),
                         '-vf', subtitle_filter,
-                        '-c:v', 'libx264', '-c:a', 'copy',
+                        '-af', 'asetpts=PTS-STARTPTS',
+                        '-c:v', 'libx264', '-c:a', 'aac',
                         '-y', str(output_path)
                     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
@@ -2307,9 +2311,23 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             
             for match in matches:
                 index, start_time, end_time, text = match
-                # تبدیل فرمت زمان SRT به ASS
-                start_ass = start_time.replace(',', '.')
-                end_ass = end_time.replace(',', '.')
+                # تبدیل فرمت زمان SRT به ASS با دقت صدم ثانیه و امکان offset
+                def to_ass(t_str: str) -> str:
+                    hh, mm, rest = t_str.split(':')
+                    ss, ms = rest.split(',')
+                    total_ms = int(hh) * 3600000 + int(mm) * 60000 + int(ss) * 1000 + int(ms)
+                    total_ms += int(config.get('time_offset_ms', 0) or 0)
+                    if total_ms < 0:
+                        total_ms = 0
+                    h = total_ms // 3600000
+                    rem = total_ms % 3600000
+                    m = rem // 60000
+                    rem = rem % 60000
+                    s = rem // 1000
+                    cs = (rem % 1000) // 10  # centiseconds
+                    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+                start_ass = to_ass(start_time)
+                end_ass = to_ass(end_time)
                 
                 # پاک‌سازی متن
                 clean_text = text.strip().replace('\n', '\\N')
