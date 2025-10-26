@@ -1697,7 +1697,9 @@ SRT File:
                 self._create_custom_ass_file(temp_ass, temp_srt, sub_config, font_name)
                 
                 # استفاده از فایل ASS سفارشی
-                subtitle_filter = f"subtitles={temp_ass.absolute()}"
+                # برای جلوگیری از تاخیر ناشی از start_time غیر صفر در ویدیوهای MP4
+                # ابتدا PTS ویدیو را به 0 بازنشانی می‌کنیم و سپس زیرنویس را اعمال می‌کنیم
+                subtitle_filter = f"setpts=PTS-STARTPTS,subtitles={temp_ass.absolute()}"
                 
                 # ساخت فیلترهای ترکیبی
                 if fixed_config['enabled'] and fixed_config['text'].strip():
@@ -2289,8 +2291,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ass_content = f"""[Script Info]
 Title: Custom Subtitles
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
