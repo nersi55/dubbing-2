@@ -833,28 +833,60 @@ class VideoDubbingApp:
             return False
     
     def translate_subtitles(self, target_language: str = "Persian (FA)") -> bool:
-        """ترجمه زیرنویس‌ها - ترجمه کامل فایل SRT در یک درخواست"""
+        """ترجمه زیرنویس‌ها - ترجمه تکه‌ای برای جلوگیری از قطع شدن خروجی مدل"""
         try:
             srt_path = self._srt_en_path()
             if not srt_path.exists():
+                print("❌ فایل SRT انگلیسی پیدا نشد")
                 return False
-            
-            # خواندن کل محتوای فایل SRT
+
+            import re, math, time
             with open(srt_path, 'r', encoding='utf-8') as f:
                 srt_content = f.read()
-            
-            # Translation models (بهترتیب کیفیت)
-            translation_models = [
-                "gemini-2.5-flash",        # بهترین کیفیت
-                "gemini-2.5-flash-lite",   # کیفیت خوب و سریع
-                "gemini-flash-lite-latest" # پشتیبان
-            ]
-            
-            def translate_entire_srt_with_fallback(srt_text):
-                for model_name in translation_models:
+
+            # 1) Parse SRT to entries: index, start, end, text
+            pattern = r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.*?)(?=\n\d+\n|\Z)'
+            src_entries = re.findall(pattern, srt_content, re.DOTALL)
+            if not src_entries:
+                print("❌ ساختار SRT معتبر نیست")
+                return False
+
+            print(f"📝 تعداد زیرنویس‌های انگلیسی: {len(src_entries)}")
+
+            # 2) Chunking helper (limit by count or characters)
+            def chunk_entries(entries, max_items=60, max_chars=5000):
+                chunks, cur, cur_chars = [], [], 0
+                for idx, st, en, tx in entries:
+                    block = f"{idx}\n{st} --> {en}\n{tx.strip()}\n\n"
+                    if cur and (len(cur) >= max_items or cur_chars + len(block) > max_chars):
+                        chunks.append(cur)
+                        cur, cur_chars = [], 0
+                    cur.append((idx, st, en, tx))
+                    cur_chars += len(block)
+                if cur:
+                    chunks.append(cur)
+                return chunks
+
+            chunks = chunk_entries(src_entries)
+            print(f"📦 فایل به {len(chunks)} تکه تقسیم شد")
+
+            # 3) Build prompt per chunk and translate
+            def build_chunk_srt(chunk):
+                # شماره‌ها را از 1 شروع می‌کنیم تا مدل سردرگم نشود
+                lines = []
+                for i, (idx, st, en, tx) in enumerate(chunk, start=1):
+                    lines.append(str(i))
+                    lines.append(f"{st} --> {en}")
+                    lines.append(tx.strip())
+                    lines.append("")
+                return "\n".join(lines)
+
+            def translate_chunk(chunk_srt):
+                models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest"]
+                for m in models:
                     try:
                         model = genai.GenerativeModel(
-                            model_name,
+                            m,
                             safety_settings={
                                 genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
                                 genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH: genai.types.HarmBlockThreshold.BLOCK_NONE,
@@ -862,66 +894,84 @@ class VideoDubbingApp:
                                 genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
                             }
                         )
-                        
                         if target_language == "Persian (FA)":
-                            prompt = f"""متن کامل فایل SRT زیر را که شامل زیرنویس‌های یک ویدیو به زبان انگلیسی است، به دقت مطالعه کن تا کاملاً متوجه موضوع و مفهوم کلی آن شوی.
-پس از درک کامل محتوا، هر خط از متن زیرنویس (بخش انگلیسی) را به فارسی بسیار روان، طبیعی و قابل فهم برای مخاطب عمومی ترجمه کن. ترجمه . پیام اصلی هر خط را بدون هیچ گونه ابهام یا دشواری در درک منتقل کن.
-نکات بسیار مهم:
-حفظ ساختار SRT: لطفاً ساختار زمانی فایل SRT را دقیقاً حفظ کن. یعنی هر خط ترجمه فارسی باید دقیقاً مقابل خط اصلی انگلیسی و با همان شماره و زمان‌بندی قرار گیرد. فقط متن انگلیسی را ترجمه کن و اعداد و زمان‌بندی را بدون تغییر کپی کن.
-حفظ اعداد در متن ترجمه: هر عدد یا رقمی که در متن انگلیسی زیرنویس وجود دارد (مثلاً "Gemma 3N", "version 2.5", "100 meters", "5G connectivity")، باید دقیقاً و بدون تغییر در ترجمه فارسی نیز آورده شود. اعداد را ترجمه یا حذف نکن.
+                            prompt = f"""کل همین فایل SRT کوچک را به فارسی ترجمه کن و فقط ساختار SRT را بدون هیچ توضیح اضافه حفظ کن.
+اعداد و بازه‌های زمانی را دست نزن، فقط متن را ترجمه کن.
 
-فایل SRT:
-{srt_text}
+{chunk_srt}
 
-ترجمه فارسی:"""
+ترجمه:"""
                         else:
-                            language_map = {
-                                "English (EN)": "English", "German (DE)": "German", 
-                                "French (FR)": "French", "Italian (IT)": "Italian", 
-                                "Spanish (ES)": "Spanish", "Chinese (ZH)": "Chinese", 
-                                "Korean (KO)": "Korean", "Russian (RU)": "Russian", 
-                                "Arabic (AR)": "Arabic", "Japanese (JA)": "Japanese", 
-                                "Hindi (HI)": "Hindi"
-                            }
-                            target_lang_name = language_map.get(target_language, "English")
-                            prompt = f"""You are an expert subtitle translator. Please carefully read the complete SRT file below which contains subtitles for a video in English, and understand the overall topic and context.
-After fully understanding the content, translate each line of subtitle text (English part) to {target_lang_name} in a very fluent, natural and understandable way for general audience. The translation should not sound machine-like and should be like text written by a native speaker. Convey the main message of each line without any ambiguity or difficulty in understanding.
-Very important note: Please preserve the exact timing structure of the SRT file. Each translated line should be exactly opposite the original English line with the same number and timing. Only translate the English text and copy the numbers and timing without any changes.
+                            prompt = f"""Translate this small SRT file to {target_language} preserving exact SRT structure (numbers and timings unchanged), translate text only.
 
-SRT File:
-{srt_text}
+{chunk_srt}
 
-{target_lang_name} Translation:"""
-                        
-                        print(f"🔄 ارسال کل فایل SRT به مدل {model_name} برای ترجمه...")
-                        response = model.generate_content(prompt)
-                        time.sleep(3)  # Rate limiting
-                        
-                        # پاکسازی پاسخ از خطوط اضافی
-                        cleaned_response = self._clean_srt_response(response.text.strip())
-                        return cleaned_response
-                        
+Translation:"""
+
+                        resp = model.generate_content(prompt)
+                        time.sleep(2)
+                        return self._clean_srt_response(resp.text.strip())
                     except Exception as e:
-                        print(f"خطا در مدل {model_name}: {str(e)}")
-                        time.sleep(5)
+                        print(f"⚠️ خطا در مدل {m}: {str(e)}")
+                        time.sleep(3)
                         continue
+                return None
+
+            # 4) Parse translated chunk into (text) list by aligning with original times
+            def parse_translated_chunk(translated_srt):
+                if not translated_srt:
+                    return []
+                out = re.findall(pattern, translated_srt, re.DOTALL)
+                # returns list of tuples (idx, start, end, text)
+                return out
+
+            # 5) Rebuild final FA SRT with original indices and timings
+            fa_lines = []
+            cursor = 0
+            total_translated = 0
+            
+            for i, chunk in enumerate(chunks, 1):
+                print(f"🔄 ترجمه تکه {i}/{len(chunks)} ({len(chunk)} زیرنویس)...")
+                chunk_srt = build_chunk_srt(chunk)
+                tr_srt = translate_chunk(chunk_srt)
+                tr_blocks = parse_translated_chunk(tr_srt)
+
+                # align by order
+                n = min(len(tr_blocks), len(chunk))
+                for j in range(n):
+                    orig_idx, orig_st, orig_en, _ = chunk[j]
+                    _, _, _, tr_text = tr_blocks[j]
+                    fa_lines.append(str(orig_idx))
+                    fa_lines.append(f"{orig_st} --> {orig_en}")
+                    fa_lines.append(tr_text.strip())
+                    fa_lines.append("")
+                    total_translated += 1
                 
-                return srt_content  # Return original content if all models fail
-            
-            # ترجمه کل فایل SRT در یک درخواست
-            print(f"🔄 شروع ترجمه کامل فایل SRT...")
-            translated_content = translate_entire_srt_with_fallback(srt_content)
-            
-            # ذخیره فایل ترجمه شده
+                print(f"   ✅ {n}/{len(chunk)} زیرنویس ترجمه شد")
+                cursor += len(chunk)
+
             translated_path = self._srt_fa_path()
             with open(translated_path, 'w', encoding='utf-8') as f:
-                f.write(translated_content)
+                f.write("\n".join(fa_lines).strip() + "\n")
+
+            # Final check
+            src_count = len(src_entries)
+            fa_count = total_translated
+            print(f"📊 نتیجه نهایی: انگلیسی {src_count} زیرنویس | فارسی {fa_count} زیرنویس")
             
-            print(f"✅ ترجمه کامل فایل SRT با موفقیت انجام شد!")
+            if fa_count < src_count:
+                print(f"⚠️ هشدار: {src_count - fa_count} زیرنویس ترجمه نشدند (خروجی مدل ناقص)")
+                print("💡 می‌توانید دوباره اجرا کنید تا تکمیل شود")
+            else:
+                print("✅ تمام زیرنویس‌ها با موفقیت ترجمه شدند")
+
+            print("✅ ترجمه تکه‌ای SRT با موفقیت انجام شد")
             return True
             
         except Exception as e:
-            print(f"خطا در ترجمه: {str(e)}")
+            print(f"❌ خطا در ترجمه: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def parse_audio_mime_type(self, mime_type: str) -> dict:
