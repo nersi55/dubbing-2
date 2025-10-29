@@ -104,20 +104,26 @@ SUBTITLE_CONFIG = {
     "italic": False
 }
 
-# تنظیمات متن ثابت پایین
-FIXED_TEXT_CONFIG = {
-    "enabled": True,
-    "text": "ترجمه و زیرنویس ققنوس شانس",
-    "font": "vazirmatn",
-    "fontsize": 9,  # کاهش اندازه فونت طبق درخواست
-    "color": "yellow",
-    "background_color": "none",
-    "position": "bottom_center",
-    "margin_bottom": 10,
-    "opacity": 1.0,
-    "bold": False,  # غیرفعال کردن bold برای جلوگیری از مشکل
-    "italic": False
-}
+# مقدار پیش‌فرض متن ثابت
+DEFAULT_FIXED_TEXT = "ترجمه و زیرنویس ققنوس شانس"
+
+# تنظیمات متن ثابت پایین (متن از ورودی کاربر استفاده می‌شود)
+def get_fixed_text_config(custom_text=None):
+    """ایجاد تنظیمات متن ثابت با متن سفارشی"""
+    text = custom_text if custom_text else DEFAULT_FIXED_TEXT
+    return {
+        "enabled": True,
+        "text": text,
+        "font": "vazirmatn",
+        "fontsize": 9,  # کاهش اندازه فونت طبق درخواست
+        "color": "yellow",
+        "background_color": "none",
+        "position": "bottom_center",
+        "margin_bottom": 10,
+        "opacity": 1.0,
+        "bold": False,  # غیرفعال کردن bold برای جلوگیری از مشکل
+        "italic": False
+    }
 
 # تابع برای ایجاد instance از کلاس دوبله
 @st.cache_resource
@@ -139,23 +145,23 @@ else:
 
 # فرم ورودی
 st.markdown('<div class="input-container">', unsafe_allow_html=True)
-st.markdown("### 🔗 لینک ویدیو یوتیوب یا فایل CSV فهرست لینک‌ها")
+st.markdown("### 🔗 لینک ویدیو یوتیوب، اینستاگرام یا فایل CSV فهرست لینک‌ها")
 youtube_url = st.text_input(
-    "آدرس ویدیو یوتیوب را اینجا وارد کنید:",
-    placeholder="https://youtube.com/watch?v=...",
-    help="لینک کامل ویدیو یوتیوب را اینجا وارد کنید",
+    "آدرس ویدیو (یوتیوب یا اینستاگرام) را اینجا وارد کنید:",
+    placeholder="https://youtube.com/watch?v=... یا https://www.instagram.com/reel/...",
+    help="لینک کامل ویدیو یوتیوب یا اینستاگرام را اینجا وارد کنید",
     label_visibility="collapsed"
 )
 
 # ورودی جایگزین: آپلود CSV حاوی لیست لینک‌ها
-csv_file = st.file_uploader("یا فایل CSV شامل لیست لینک‌های یوتیوب را آپلود کنید", type=["csv"])
+csv_file = st.file_uploader("یا فایل CSV شامل لیست لینک‌های یوتیوب/اینستاگرام را آپلود کنید", type=["csv"])
 
 # نمایش تنظیمات ثابت
 with st.expander("⚙️ تنظیمات ثابت (غیرقابل تغییر)"):
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**🔑 کلید Google API:** `AIzaSyBNYpugB8Ezrpmk-U7Yvp9ynClEJLCETMo`")
-        st.markdown("**📺 روش آپلود:** یوتیوب")
+        st.markdown("**📺 روش آپلود:** یوتیوب / اینستاگرام")
         st.markdown("**🌐 زبان مقصد:** فارسی")
         st.markdown("**📝 فشرده‌سازی:** غیرفعال")
         st.markdown("**🔍 استخراج متن:** Whisper")
@@ -168,8 +174,24 @@ with st.expander("⚙️ تنظیمات ثابت (غیرقابل تغییر)"):
         st.markdown("**🖤 زمینه:** شفاف")
         st.markdown("**📌 حاشیه:** 1px سفید")
 
-st.markdown("**📌 متن ثابت پایین:**")
-st.markdown("- **متن:** ترجمه و زیرنویس ققنوس شانس")
+st.markdown("**📌 متن ثابت پایین ویدیو:**")
+
+# ورودی متن سفارشی - استفاده از session state برای ذخیره مقدار
+if 'custom_fixed_text' not in st.session_state:
+    st.session_state.custom_fixed_text = DEFAULT_FIXED_TEXT
+
+custom_text = st.text_input(
+    "متن ثابت نمایش داده شده در پایین ویدیو:",
+    value=st.session_state.custom_fixed_text,
+    placeholder="متن خود را اینجا وارد کنید...",
+    help="این متن در پایین ویدیو نمایش داده می‌شود",
+    key="fixed_text_input"
+)
+
+# به‌روزرسانی session state
+st.session_state.custom_fixed_text = custom_text if custom_text.strip() else DEFAULT_FIXED_TEXT
+
+st.markdown(f"- **متن فعلی:** {st.session_state.custom_fixed_text}")
 st.markdown("- **فونت:** vazirmatn | **اندازه:** 9px | **رنگ:** زرد")
 st.markdown("- **موقعیت:** پایین وسط | **شفافیت:** 1.0 | **ضخیم:** بله")
 
@@ -223,11 +245,24 @@ if st.button("🚀 شروع پردازش", type="primary", use_container_width=T
         st.write(f"[{idx}/{total}] پردازش: {url}")
         progress.progress(min(int(idx / total * 100), 100))
 
-        # 1) دانلود
-        with st.spinner("📥 دانلود ویدیو..."):
-            if not dubbing_app.download_youtube_video(url):
-                results.append((url, "download_failed"))
-                continue
+        # 1) دانلود - تشخیص نوع URL
+        if 'instagram.com' in url:
+            with st.spinner("📥 دانلود ویدیو از اینستاگرام..."):
+                if not dubbing_app.download_instagram_video(url):
+                    results.append((url, "download_failed"))
+                    continue
+                # استخراج ID اینستاگرام برای نام‌گذاری
+                try:
+                    insta_id = dubbing_app._extract_instagram_id(url)
+                    if insta_id:
+                        dubbing_app.set_session_id(insta_id[:11])
+                except Exception:
+                    pass
+        else:
+            with st.spinner("📥 دانلود ویدیو از یوتیوب..."):
+                if not dubbing_app.download_youtube_video(url):
+                    results.append((url, "download_failed"))
+                    continue
 
         # 2) استخراج متن
         with st.spinner("🔍 استخراج متن..."):
@@ -243,16 +278,24 @@ if st.button("🚀 شروع پردازش", type="primary", use_container_width=T
 
         # 4) ایجاد ویدیو با زیرنویس
         with st.spinner("🎬 ساخت ویدیو با زیرنویس..."):
-            try:
-                vid = dubbing_app._extract_video_id(url)
-                if vid:
-                    dubbing_app.set_session_id(vid)
-            except Exception:
-                pass
+            # اگر session_id قبلاً تنظیم نشده بود، تلاش برای استخراج
+            if not dubbing_app.session_id:
+                try:
+                    if 'instagram.com' in url:
+                        vid = dubbing_app._extract_instagram_id(url)
+                    else:
+                        vid = dubbing_app._extract_video_id(url)
+                    if vid:
+                        dubbing_app.set_session_id(vid[:11] if vid else None)
+                except Exception:
+                    pass
 
+            # استفاده از متن سفارشی کاربر
+            fixed_text_config = get_fixed_text_config(st.session_state.custom_fixed_text)
+            
             out = dubbing_app.create_subtitled_video(
                 subtitle_config=SUBTITLE_CONFIG,
-                fixed_text_config=FIXED_TEXT_CONFIG
+                fixed_text_config=fixed_text_config
             )
             if not out or not os.path.exists(out):
                 results.append((url, "video_failed"))
