@@ -280,6 +280,161 @@ class VideoDubbingApp:
                     return False
             return True
     
+    def download_instagram_video(self, url: str) -> bool:
+        """دانلود ویدیو از اینستاگرام"""
+        try:
+            # استخراج session id از URL اینستاگرام
+            try:
+                post_id = self._extract_instagram_id(url)
+                if post_id:
+                    self.set_session_id(post_id[:11])
+            except Exception:
+                pass
+            
+            # پاکسازی فایل‌های قبلی
+            for file in self.work_dir.glob('temp_video*'):
+                file.unlink()
+            
+            format_option = 'best'
+            temp_filename = str(self.work_dir / 'temp_video.%(ext)s')
+            
+            # تنظیمات پایه
+            base_opts = {
+                'format': format_option,
+                'outtmpl': temp_filename,
+                'nocheckcertificate': True,
+                'ignoreerrors': False,
+                'no_warnings': False,
+                'quiet': False,
+                'socket_timeout': 30,
+                'retries': 1,
+                'fragment_retries': 1,
+                'extractor_retries': 1,
+            }
+            
+            # افزودن کوکی اگر موجود است
+            if os.path.exists('cookies.txt'):
+                base_opts['cookiefile'] = 'cookies.txt'
+                print("🍪 استفاده از فایل کوکی برای دانلود اینستاگرام")
+            else:
+                print("⚠️ فایل cookies.txt یافت نشد - دانلود بدون کوکی (ممکن است برای محتوای خصوصی نیاز باشد)")
+            
+            # استراتژی‌های مختلف دانلود
+            strategies = []
+            
+            # 1) پیش‌فرض با User-Agent مرورگر
+            s1 = {
+                **base_opts,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'referer': 'https://www.instagram.com/'
+            }
+            strategies.append(("Default+Chrome", s1))
+            
+            # 2) Mobile User-Agent
+            s2 = {
+                **base_opts,
+                'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
+                'referer': 'https://www.instagram.com/'
+            }
+            strategies.append(("Mobile", s2))
+            
+            # 3) بدون User-Agent خاص (استفاده از پیش‌فرض yt-dlp)
+            s3 = {**base_opts}
+            strategies.append(("Minimal", s3))
+            
+            downloaded_file = None
+            last_error = None
+            
+            for name, opts in strategies:
+                try:
+                    print(f"🧪 تلاش دانلود اینستاگرام با استراتژی: {name} ...")
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        info = ydl.extract_info(url, download=True)
+                        if info is None:
+                            print(f"   ❌ {name}: اطلاعات ویدیو دریافت نشد")
+                            continue
+                        downloaded_file = ydl.prepare_filename(info)
+                    
+                    if downloaded_file and os.path.exists(downloaded_file):
+                        print(f"✅ دانلود اینستاگرام موفق با {name}")
+                        break
+                except Exception as e:
+                    last_error = str(e)
+                    print(f"   ❌ استراتژی {name} شکست خورد: {str(e)[:120]}...")
+                    continue
+            
+            if not downloaded_file:
+                if last_error:
+                    print(f"❌ همه استراتژی‌ها شکست خوردند. آخرین خطا: {last_error[:200]}...")
+                else:
+                    print("❌ همه استراتژی‌ها شکست خوردند.")
+                print("💡 پیشنهاد: مطمئن شوید که:")
+                print("   1. لینک اینستاگرام معتبر است")
+                print("   2. برای محتوای خصوصی، فایل cookies.txt را اضافه کنید")
+                print("   3. yt-dlp را به آخرین نسخه به‌روزرسانی کرده‌اید: pip install -U yt-dlp")
+                return False
+            
+            # پردازش فایل دانلود شده
+            if os.path.exists(downloaded_file):
+                _, file_extension = os.path.splitext(downloaded_file)
+                final_filename = self.work_dir / f'input_video{file_extension}'
+                
+                # تغییر نام فایل
+                os.rename(downloaded_file, str(final_filename))
+                
+                # تبدیل به MP4 اگر لازم باشد
+                if file_extension.lower() != '.mp4':
+                    mp4_path = self.work_dir / 'input_video.mp4'
+                    subprocess.run([
+                        'ffmpeg', '-i', str(final_filename),
+                        '-c', 'copy', str(mp4_path), '-y'
+                    ], check=True, capture_output=True)
+                    final_filename.unlink()
+                else:
+                    # اگر قبلاً mp4 بود، فقط نام را تغییر می‌دهیم
+                    mp4_path = self.work_dir / 'input_video.mp4'
+                    if final_filename != mp4_path:
+                        os.rename(final_filename, str(mp4_path))
+                
+                # استخراج صدا
+                audio_path = self.work_dir / 'audio.wav'
+                subprocess.run([
+                    'ffmpeg', '-i', str(self.work_dir / 'input_video.mp4'),
+                    '-vn', str(audio_path), '-y'
+                ], check=True, capture_output=True)
+                
+                print("✅ دانلود اینستاگرام و استخراج صدا با موفقیت انجام شد!")
+                return True
+            else:
+                print("❌ فایل دانلود نشد")
+                return False
+                
+        except Exception as e:
+            print(f"❌ خطا در دانلود اینستاگرام: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _extract_instagram_id(self, url: str) -> Optional[str]:
+        """استخراج شناسه پست یا ریل از URL اینستاگرام"""
+        try:
+            # برای پست‌ها: /p/xxxxx/
+            # برای ریل‌ها: /reel/xxxxx/
+            patterns = [
+                r'/p/([A-Za-z0-9_-]+)/?',
+                r'/reel/([A-Za-z0-9_-]+)/?',
+                r'/tv/([A-Za-z0-9_-]+)/?',
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, url)
+                if match:
+                    return match.group(1)
+            
+            return None
+        except Exception:
+            return None
+    
     def _fallback_download(self, url: str) -> bool:
         """دانلود با تنظیمات جایگزین در صورت شکست"""
         try:
@@ -739,20 +894,31 @@ class VideoDubbingApp:
                 return False
             
             # Ensure we have an id for naming when running locally
+            # IMPORTANT: Set session_id BEFORE calculating path to ensure consistency
             if not self.session_id:
                 try:
                     # Derive from existing input_video if possible
                     possible_input = self.work_dir / 'input_video.mp4'
                     if possible_input.exists():
                         self.set_session_id_from_local_path(str(possible_input))
+                    else:
+                        self._ensure_session_id()
                 except Exception:
                     self._ensure_session_id()
 
             srt_path = self._srt_en_path()
+            # Debug: Print the path being used
+            print(f"🔍 در حال ذخیره فایل SRT در: {srt_path}")
             with open(srt_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(srt_content))
             
-            print(f"✅ فایل SRT با {len(srt_content)} زیرنویس ایجاد شد")
+            # Verify file was created
+            if srt_path.exists():
+                print(f"✅ فایل SRT با {len(srt_content)} زیرنویس ایجاد شد در: {srt_path}")
+            else:
+                print(f"⚠️ خطا: فایل SRT ایجاد نشد در: {srt_path}")
+                return False
+            
             return True
             
         except Exception as e:
@@ -835,10 +1001,50 @@ class VideoDubbingApp:
     def translate_subtitles(self, target_language: str = "Persian (FA)") -> bool:
         """ترجمه زیرنویس‌ها - ترجمه تکه‌ای برای جلوگیری از قطع شدن خروجی مدل"""
         try:
+            # Ensure session_id is set before looking for the file
+            if not self.session_id:
+                try:
+                    possible_input = self.work_dir / 'input_video.mp4'
+                    if possible_input.exists():
+                        self.set_session_id_from_local_path(str(possible_input))
+                    else:
+                        self._ensure_session_id()
+                except Exception:
+                    self._ensure_session_id()
+            
             srt_path = self._srt_en_path()
+            # Debug: Print the path being searched
+            print(f"🔍 در حال جستجوی فایل SRT در: {srt_path}")
+            print(f"🔍 session_id: {self.session_id}")
+            
             if not srt_path.exists():
-                print("❌ فایل SRT انگلیسی پیدا نشد")
-                return False
+                # Try to find any SRT file as fallback
+                srt_files = list(self.work_dir.glob("*.srt"))
+                print(f"❌ فایل SRT انگلیسی پیدا نشد در: {srt_path}")
+                if srt_files:
+                    print(f"🔍 فایل‌های SRT موجود: {[str(f) for f in srt_files]}")
+                    # Try to find audio.srt first (legacy naming)
+                    audio_srt = self.work_dir / 'audio.srt'
+                    if audio_srt.exists():
+                        print(f"⚠️ استفاده از فایل audio.srt به عنوان جایگزین")
+                        srt_path = audio_srt
+                    # If there's exactly one SRT file, use it as fallback
+                    elif len(srt_files) == 1:
+                        print(f"⚠️ استفاده از فایل SRT موجود: {srt_files[0]}")
+                        srt_path = srt_files[0]
+                    else:
+                        # Try to find any audio_*.srt file (but not _fa.srt)
+                        audio_pattern_srt = list(self.work_dir.glob("audio_*.srt"))
+                        audio_pattern_srt = [f for f in audio_pattern_srt if not f.name.endswith('_fa.srt')]
+                        if audio_pattern_srt:
+                            print(f"⚠️ استفاده از فایل SRT موجود: {audio_pattern_srt[0]}")
+                            srt_path = audio_pattern_srt[0]
+                        else:
+                            print(f"❌ هیچ فایل SRT انگلیسی مناسب یافت نشد")
+                            return False
+                else:
+                    print(f"❌ هیچ فایل SRT یافت نشد")
+                    return False
 
             import re, math, time
             with open(srt_path, 'r', encoding='utf-8') as f:
@@ -951,8 +1157,18 @@ Translation:"""
                 cursor += len(chunk)
 
             translated_path = self._srt_fa_path()
+            print(f"🔍 در حال ذخیره فایل SRT فارسی در: {translated_path}")
+            print(f"🔍 session_id: {self.session_id}")
             with open(translated_path, 'w', encoding='utf-8') as f:
                 f.write("\n".join(fa_lines).strip() + "\n")
+            
+            # Verify file was created
+            if translated_path.exists():
+                file_size = translated_path.stat().st_size
+                print(f"✅ فایل SRT فارسی با موفقیت ذخیره شد در: {translated_path} (حجم: {file_size} بایت)")
+            else:
+                print(f"⚠️ خطا: فایل SRT فارسی ایجاد نشد در: {translated_path}")
+                return False
 
             # Final check
             src_count = len(src_entries)
@@ -1172,12 +1388,60 @@ Translation:"""
                           original_audio_volume: float = 0.8) -> Optional[str]:
         """ایجاد ویدیو نهایی دوبله شده"""
         try:
+            # Ensure session_id is set before looking for files
+            if not self.session_id:
+                try:
+                    possible_input = self.work_dir / 'input_video.mp4'
+                    if possible_input.exists():
+                        self.set_session_id_from_local_path(str(possible_input))
+                    else:
+                        self._ensure_session_id()
+                except Exception:
+                    self._ensure_session_id()
+            
             video_path = self.work_dir / 'input_video.mp4'
             srt_path = self._srt_fa_path()
             
-            if not video_path.exists() or not srt_path.exists():
-                print("❌ فایل ویدیو یا زیرنویس یافت نشد")
+            print(f"🔍 در حال جستجوی فایل ویدیو: {video_path}")
+            print(f"🔍 در حال جستجوی فایل SRT فارسی: {srt_path}")
+            print(f"🔍 session_id: {self.session_id}")
+            
+            # Check video file
+            if not video_path.exists():
+                print(f"❌ فایل ویدیو یافت نشد: {video_path}")
                 return None
+            
+            # Check subtitle file with fallback
+            if not srt_path.exists():
+                print(f"❌ فایل SRT فارسی در مسیر مورد انتظار یافت نشد: {srt_path}")
+                # Try to find any _fa.srt file
+                fa_srt_files = list(self.work_dir.glob("*_fa.srt"))
+                if fa_srt_files:
+                    print(f"🔍 فایل‌های SRT فارسی موجود: {[str(f) for f in fa_srt_files]}")
+                    if len(fa_srt_files) == 1:
+                        print(f"⚠️ استفاده از فایل SRT فارسی موجود: {fa_srt_files[0]}")
+                        srt_path = fa_srt_files[0]
+                    else:
+                        # Try to find audio_fa.srt (legacy naming)
+                        audio_fa_srt = self.work_dir / 'audio_fa.srt'
+                        if audio_fa_srt.exists():
+                            print(f"⚠️ استفاده از فایل audio_fa.srt به عنوان جایگزین")
+                            srt_path = audio_fa_srt
+                        else:
+                            print(f"❌ هیچ فایل SRT فارسی مناسب یافت نشد")
+                            return None
+                else:
+                    # Try legacy naming
+                    audio_fa_srt = self.work_dir / 'audio_fa.srt'
+                    if audio_fa_srt.exists():
+                        print(f"⚠️ استفاده از فایل audio_fa.srt به عنوان جایگزین")
+                        srt_path = audio_fa_srt
+                    else:
+                        print(f"❌ هیچ فایل SRT فارسی یافت نشد")
+                        return None
+            
+            print(f"✅ فایل ویدیو: {video_path}")
+            print(f"✅ فایل SRT فارسی: {srt_path}")
             
             subs = pysrt.open(str(srt_path), encoding='utf-8')
             print(f"📝 تعداد زیرنویس‌ها: {len(subs)}")
@@ -1678,12 +1942,60 @@ Translation:"""
     def create_subtitled_video(self, subtitle_config: dict = None, fixed_text_config: dict = None) -> Optional[str]:
         """ایجاد ویدیو با زیرنویس ترجمه شده و متن ثابت پایین"""
         try:
+            # Ensure session_id is set before looking for files
+            if not self.session_id:
+                try:
+                    possible_input = self.work_dir / 'input_video.mp4'
+                    if possible_input.exists():
+                        self.set_session_id_from_local_path(str(possible_input))
+                    else:
+                        self._ensure_session_id()
+                except Exception:
+                    self._ensure_session_id()
+            
             video_path = self.work_dir / 'input_video.mp4'
             srt_path = self._srt_fa_path()
             
-            if not video_path.exists() or not srt_path.exists():
-                print("❌ فایل ویدیو یا زیرنویس یافت نشد")
+            print(f"🔍 در حال جستجوی فایل ویدیو: {video_path}")
+            print(f"🔍 در حال جستجوی فایل SRT فارسی: {srt_path}")
+            print(f"🔍 session_id: {self.session_id}")
+            
+            # Check video file
+            if not video_path.exists():
+                print(f"❌ فایل ویدیو یافت نشد: {video_path}")
                 return None
+            
+            # Check subtitle file with fallback
+            if not srt_path.exists():
+                print(f"❌ فایل SRT فارسی در مسیر مورد انتظار یافت نشد: {srt_path}")
+                # Try to find any _fa.srt file
+                fa_srt_files = list(self.work_dir.glob("*_fa.srt"))
+                if fa_srt_files:
+                    print(f"🔍 فایل‌های SRT فارسی موجود: {[str(f) for f in fa_srt_files]}")
+                    if len(fa_srt_files) == 1:
+                        print(f"⚠️ استفاده از فایل SRT فارسی موجود: {fa_srt_files[0]}")
+                        srt_path = fa_srt_files[0]
+                    else:
+                        # Try to find audio_fa.srt (legacy naming)
+                        audio_fa_srt = self.work_dir / 'audio_fa.srt'
+                        if audio_fa_srt.exists():
+                            print(f"⚠️ استفاده از فایل audio_fa.srt به عنوان جایگزین")
+                            srt_path = audio_fa_srt
+                        else:
+                            print(f"❌ هیچ فایل SRT فارسی مناسب یافت نشد")
+                            return None
+                else:
+                    # Try legacy naming
+                    audio_fa_srt = self.work_dir / 'audio_fa.srt'
+                    if audio_fa_srt.exists():
+                        print(f"⚠️ استفاده از فایل audio_fa.srt به عنوان جایگزین")
+                        srt_path = audio_fa_srt
+                    else:
+                        print(f"❌ هیچ فایل SRT فارسی یافت نشد")
+                        return None
+            
+            print(f"✅ فایل ویدیو: {video_path}")
+            print(f"✅ فایل SRT فارسی: {srt_path}")
             
             # اعتبارسنجی فایل SRT
             if not self._validate_srt_file(srt_path):
