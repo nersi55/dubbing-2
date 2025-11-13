@@ -93,6 +93,8 @@ class VideoDubbingApp:
         self.work_dir.mkdir(exist_ok=True)
         self.segments_dir = self.work_dir / "dubbed_segments"
         self.segments_dir.mkdir(exist_ok=True)
+        self.instagram_dir = self.work_dir / "instagram"
+        self.instagram_dir.mkdir(exist_ok=True)
         # Shared session identifier used for naming outputs (YouTube ID or derived local ID)
         self.session_id: Optional[str] = None
 
@@ -280,8 +282,13 @@ class VideoDubbingApp:
                     return False
             return True
     
-    def download_instagram_video(self, url: str) -> bool:
-        """دانلود ویدیو از اینستاگرام"""
+    def download_instagram_video(self, url: str, save_to_instagram_dir: bool = False) -> bool:
+        """دانلود ویدیو از اینستاگرام
+        
+        Args:
+            url: لینک ویدیو اینستاگرام
+            save_to_instagram_dir: اگر True باشد، ویدیو را در فولدر instagram ذخیره می‌کند
+        """
         try:
             # استخراج session id از URL اینستاگرام
             try:
@@ -377,14 +384,23 @@ class VideoDubbingApp:
             # پردازش فایل دانلود شده
             if os.path.exists(downloaded_file):
                 _, file_extension = os.path.splitext(downloaded_file)
-                final_filename = self.work_dir / f'input_video{file_extension}'
+                
+                # تعیین مسیر نهایی بر اساس save_to_instagram_dir
+                if save_to_instagram_dir:
+                    # استفاده از نام فایل بر اساس post_id
+                    video_filename = self._get_instagram_filename(url, 'video', file_extension.lstrip('.'))
+                    final_filename = self.instagram_dir / video_filename
+                    mp4_filename = self._get_instagram_filename(url, 'video', 'mp4')
+                    mp4_path = self.instagram_dir / mp4_filename
+                else:
+                    final_filename = self.work_dir / f'input_video{file_extension}'
+                    mp4_path = self.work_dir / 'input_video.mp4'
                 
                 # تغییر نام فایل
                 os.rename(downloaded_file, str(final_filename))
                 
                 # تبدیل به MP4 اگر لازم باشد
                 if file_extension.lower() != '.mp4':
-                    mp4_path = self.work_dir / 'input_video.mp4'
                     subprocess.run([
                         'ffmpeg', '-i', str(final_filename),
                         '-c', 'copy', str(mp4_path), '-y'
@@ -392,14 +408,13 @@ class VideoDubbingApp:
                     final_filename.unlink()
                 else:
                     # اگر قبلاً mp4 بود، فقط نام را تغییر می‌دهیم
-                    mp4_path = self.work_dir / 'input_video.mp4'
                     if final_filename != mp4_path:
                         os.rename(final_filename, str(mp4_path))
                 
-                # استخراج صدا
+                # استخراج صدا (همیشه در work_dir)
                 audio_path = self.work_dir / 'audio.wav'
                 subprocess.run([
-                    'ffmpeg', '-i', str(self.work_dir / 'input_video.mp4'),
+                    'ffmpeg', '-i', str(mp4_path),
                     '-vn', str(audio_path), '-y'
                 ], check=True, capture_output=True)
                 
@@ -434,6 +449,805 @@ class VideoDubbingApp:
             return None
         except Exception:
             return None
+    
+    def _get_instagram_filename(self, url: str, file_type: str, extension: str = '') -> str:
+        """
+        ساخت نام فایل برای فایل‌های اینستاگرام بر اساس post_id
+        
+        Args:
+            url: لینک پست اینستاگرام
+            file_type: نوع فایل ('image', 'video', 'caption')
+            extension: پسوند فایل (مثل 'jpg', 'mp4', 'txt')
+        
+        Returns:
+            str: نام فایل کامل
+        """
+        post_id = self._extract_instagram_id(url)
+        
+        if post_id:
+            if file_type == 'caption':
+                return f'instagram_caption_{post_id}.txt'
+            elif file_type == 'image':
+                ext = extension or 'jpg'
+                return f'instagram_image_{post_id}.{ext}'
+            elif file_type == 'video':
+                ext = extension or 'mp4'
+                return f'instagram_video_{post_id}.{ext}'
+        
+        # اگر post_id پیدا نشد، از timestamp استفاده کن
+        timestamp = int(time.time())
+        if file_type == 'caption':
+            return f'instagram_caption_{timestamp}.txt'
+        elif file_type == 'image':
+            ext = extension or 'jpg'
+            return f'instagram_image_{timestamp}.{ext}'
+        elif file_type == 'video':
+            ext = extension or 'mp4'
+            return f'instagram_video_{timestamp}.{ext}'
+        
+        # fallback
+        return f'instagram_{file_type}_{timestamp}.{extension or "tmp"}'
+    
+    def extract_instagram_post(self, url: str) -> Dict[str, Any]:
+        """
+        استخراج پست اینستاگرام شامل تصویر/ویدیو و کپشن
+        
+        Args:
+            url: لینک پست اینستاگرام
+        
+        Returns:
+            dict: شامل 'media_url', 'caption', 'title', 'media_type', 'thumbnail', etc.
+        """
+        try:
+            # تنظیمات برای استخراج اطلاعات بدون دانلود
+            opts = {
+                'quiet': False,
+                'no_warnings': False,
+                'skip_download': True,  # فقط اطلاعات را بگیر، دانلود نکن
+            }
+            
+            # افزودن کوکی اگر موجود است
+            if os.path.exists('cookies.txt'):
+                opts['cookiefile'] = 'cookies.txt'
+                print("🍪 استفاده از فایل کوکی برای استخراج اطلاعات اینستاگرام")
+            
+            info = None
+            error_message = None
+            
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    print(f"📡 در حال استخراج اطلاعات از: {url}")
+                    info = ydl.extract_info(url, download=False)
+            except yt_dlp.utils.DownloadError as e:
+                error_str = str(e).lower()
+                # اگر خطا مربوط به "no video" است، احتمالاً پست یک تصویر است
+                if 'no video' in error_str or 'there is no video' in error_str:
+                    print("ℹ️ پست ویدیو نیست، احتمالاً تصویر است. تلاش برای استخراج به عنوان تصویر...")
+                    # تلاش با روش جایگزین - استفاده از Instagram extractor با تنظیمات مختلف
+                    try:
+                        # روش 1: تلاش با extractor_args
+                        opts_image = opts.copy()
+                        opts_image['extractor_args'] = {'instagram': {'include_image': True}}
+                        with yt_dlp.YoutubeDL(opts_image) as ydl:
+                            info = ydl.extract_info(url, download=False)
+                    except Exception as e2:
+                        # روش 2: تلاش با ignoreerrors
+                        try:
+                            opts_image2 = opts.copy()
+                            opts_image2['ignoreerrors'] = True
+                            opts_image2['extractor_args'] = {'instagram': {'include_image': True}}
+                            with yt_dlp.YoutubeDL(opts_image2) as ydl:
+                                info = ydl.extract_info(url, download=False)
+                        except Exception as e3:
+                            # روش 3: اگر همه روش‌ها شکست خورد، از اطلاعات خطا استفاده کن
+                            print(f"⚠️ خطا در استخراج تصویر: {str(e2)}")
+                            print("🔄 تلاش با روش جایگزین...")
+                            # استخراج اطلاعات از خطا یا URL
+                            error_message = f"پست تصویر است اما استخراج اطلاعات ناموفق بود. لطفاً از دانلود مستقیم استفاده کنید."
+                            # سعی کن حداقل thumbnail را از URL بگیر
+                            post_id_match = re.search(r'/p/([A-Za-z0-9_-]+)/?', url)
+                            if post_id_match:
+                                post_id = post_id_match.group(1)
+                                # ساخت یک نتیجه حداقلی برای تصویر
+                                info = {
+                                    'title': f'Instagram Post {post_id}',
+                                    'description': '',
+                                    'thumbnail': f'https://www.instagram.com/p/{post_id}/media/?size=l',
+                                    'ext': 'jpg',
+                                    'url': f'https://www.instagram.com/p/{post_id}/media/?size=l',
+                                    'uploader': '',
+                                    'uploader_id': '',
+                                    'view_count': 0,
+                                    'like_count': 0,
+                                    'duration': None,
+                                    'formats': [],
+                                    '_is_image_fallback': True  # فلگ برای تشخیص اینکه این info مصنوعی است
+                                }
+                                print(f"ℹ️ استفاده از روش جایگزین برای پست تصویری: {post_id}")
+                            else:
+                                error_message = f"خطا در استخراج تصویر: {str(e2)}"
+                                print(f"⚠️ {error_message}")
+                else:
+                    # خطاهای دیگر را نگه دار اما info را None بگذار
+                    error_message = str(e)
+                    print(f"⚠️ خطای دیگر: {error_message}")
+            except Exception as e:
+                # اگر info ساخته نشده، خطا را نگه دار
+                if info is None:
+                    error_message = str(e)
+                    print(f"❌ خطا در استخراج: {error_message}")
+                else:
+                    # اگر info ساخته شده، خطا را نادیده بگیر
+                    print(f"ℹ️ خطا نادیده گرفته شد چون info ساخته شد: {str(e)[:100]}")
+            
+            if not info:
+                if error_message:
+                    return {'error': error_message}
+                return {'error': 'اطلاعات پست دریافت نشد'}
+            
+            # تشخیص نوع محتوا (ویدیو یا تصویر) - استفاده از چند روش
+            duration = info.get('duration', 0)
+            formats = info.get('formats', [])
+            ext = info.get('ext', '').lower()
+            url_direct = info.get('url', '')
+            is_image_fallback = info.get('_is_image_fallback', False)
+            
+            # اگر از fallback استفاده شده، قطعاً تصویر است
+            if is_image_fallback:
+                is_video = False
+                is_image = True
+            else:
+                # روش‌های تشخیص:
+                # 1. اگر duration وجود دارد و بیشتر از 0 است -> ویدیو
+                # 2. اگر formats وجود دارد و خالی نیست -> ویدیو
+                # 3. اگر ext ویدیو است (mp4, webm, etc) -> ویدیو
+                # 4. اگر ext تصویر است (jpg, png, etc) -> تصویر
+                # 5. بررسی URL مستقیم
+                
+                is_video = False
+                is_image = False
+                
+                # بررسی duration
+                if duration and duration > 0:
+                    is_video = True
+                
+                # بررسی formats (ویدیوها معمولاً formats دارند)
+                if formats and len(formats) > 0:
+                    is_video = True
+                
+                # بررسی extension
+                video_extensions = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'm4v']
+                image_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']
+                
+                if ext in video_extensions:
+                    is_video = True
+                elif ext in image_extensions:
+                    is_image = True
+                
+                # بررسی URL مستقیم
+                if url_direct:
+                    url_lower = url_direct.lower()
+                    if any(ext in url_lower for ext in video_extensions):
+                        is_video = True
+                    elif any(ext in url_lower for ext in image_extensions):
+                        is_image = True
+                
+                # اگر هنوز تشخیص داده نشد، از duration استفاده کن
+                if not is_video and not is_image:
+                    is_video = bool(duration and duration > 0)
+                    is_image = not is_video
+                
+                # اگر هنوز هم مشخص نشد، از formats استفاده کن
+                if not is_video and not is_image:
+                    is_video = bool(formats and len(formats) > 0)
+                    is_image = not is_video
+                
+                # در نهایت اگر هیچکدام نبود، به عنوان تصویر در نظر بگیر (پیش‌فرض)
+                if not is_video and not is_image:
+                    is_image = True
+            
+            media_type = 'video' if is_video else 'image'
+            
+            result = {
+                'title': info.get('title', ''),
+                'caption': info.get('description', ''),  # کپشن در description است
+                'media_type': media_type,
+                'thumbnail': info.get('thumbnail', ''),
+                'uploader': info.get('uploader', ''),
+                'uploader_id': info.get('uploader_id', ''),
+                'view_count': info.get('view_count', 0),
+                'like_count': info.get('like_count', 0),
+                'duration': duration if is_video else None,
+            }
+            
+            # اگر ویدیو است، URL ویدیو را بگیر
+            if is_video:
+                if formats and len(formats) > 0:
+                    # بهترین کیفیت
+                    best_format = max(formats, key=lambda x: x.get('height', 0) or x.get('width', 0) or 0)
+                    result['media_url'] = best_format.get('url', '')
+                    result['video_url'] = best_format.get('url', '')
+                    result['width'] = best_format.get('width', 0)
+                    result['height'] = best_format.get('height', 0)
+                else:
+                    # اگر formats نبود، از url مستقیم استفاده کن
+                    result['media_url'] = url_direct
+                    result['video_url'] = url_direct
+            else:
+                # برای تصویر
+                result['media_url'] = url_direct
+                result['image_url'] = url_direct
+                # اگر thumbnail موجود است و url مستقیم نیست، از thumbnail استفاده کن
+                if not result['media_url'] and result['thumbnail']:
+                    result['media_url'] = result['thumbnail']
+                    result['image_url'] = result['thumbnail']
+            
+            return result
+                
+        except Exception as e:
+            print(f"❌ خطا در استخراج اطلاعات اینستاگرام: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {'error': f'خطا در استخراج: {str(e)}'}
+    
+    def download_instagram_media(self, url: str, download_media: bool = True) -> Dict[str, Any]:
+        """
+        دانلود تصویر/ویدیو و استخراج کپشن از اینستاگرام
+        
+        Args:
+            url: لینک پست اینستاگرام
+            download_media: اگر True باشد، فایل را دانلود می‌کند
+        
+        Returns:
+            dict: شامل اطلاعات پست و مسیر فایل دانلود شده (اگر download_media=True)
+        """
+        try:
+            # ابتدا اطلاعات را استخراج کن
+            post_info = self.extract_instagram_post(url)
+            
+            # اگر خطا داشت اما می‌توانیم دانلود کنیم، ادامه بده
+            has_error = 'error' in post_info
+            can_download = False
+            
+            if has_error:
+                # اگر خطا داشت، سعی کن حداقل media_type را تشخیص بده
+                error_msg = post_info.get('error', '')
+                if 'no video' in error_msg.lower() or 'there is no video' in error_msg.lower():
+                    # این یک تصویر است، می‌توانیم دانلود کنیم
+                    post_info['media_type'] = 'image'
+                    can_download = True
+                    print("ℹ️ پست تصویر است، تلاش برای دانلود...")
+                elif download_media:
+                    # اگر باید دانلود کنیم و خطا داریم، سعی کن مستقیماً دانلود کنیم
+                    print("⚠️ خطا در استخراج اطلاعات، تلاش برای دانلود مستقیم...")
+                    can_download = True
+                else:
+                    # اگر فقط باید اطلاعات را بگیریم و خطا داریم، خطا را برگردان
+                    return post_info
+            else:
+                can_download = True
+            
+            if not can_download:
+                return post_info
+            
+            # اگر باید فایل را دانلود کنیم
+            if download_media:
+                # تشخیص media_type اگر موجود نباشد
+                media_type = post_info.get('media_type', 'unknown')
+                if media_type == 'unknown':
+                    # سعی کن از URL تشخیص بده
+                    if '/reel/' in url or '/tv/' in url:
+                        media_type = 'video'
+                    else:
+                        media_type = 'image'  # پیش‌فرض برای پست‌های عادی
+                    post_info['media_type'] = media_type
+                
+                # بررسی اینکه آیا فایل قبلاً دانلود شده است (فقط اگر هنوز دانلود نشده)
+                if media_type == 'image' and not post_info.get('downloaded_file'):
+                    # جستجو بر اساس post_id
+                    post_id = self._extract_instagram_id(url)
+                    if post_id:
+                        existing_files = list(self.instagram_dir.glob(f'instagram_image_{post_id}.*'))
+                    else:
+                        existing_files = list(self.instagram_dir.glob('instagram_image_*.*'))
+                    
+                    if existing_files:
+                        # بررسی اینکه فایل واقعاً وجود دارد
+                        for file_path in existing_files:
+                            if file_path.exists() and file_path.stat().st_size > 0:
+                                post_info['downloaded_file'] = str(file_path)
+                                post_info['downloaded'] = True
+                                print(f"✅ فایل موجود یافت شد: {file_path}")
+                                break
+                
+                if media_type == 'video':
+                    # استفاده از تابع موجود برای دانلود ویدیو
+                    print("🎥 تشخیص داده شد: ویدیو")
+                    success = self.download_instagram_video(url, save_to_instagram_dir=True)
+                    if success:
+                        # بررسی فایل در فولدر instagram با نام بر اساس post_id
+                        post_id = self._extract_instagram_id(url)
+                        if post_id:
+                            video_files = list(self.instagram_dir.glob(f'instagram_video_{post_id}.*'))
+                        else:
+                            video_files = list(self.instagram_dir.glob('instagram_video_*.*'))
+                        
+                        if video_files:
+                            post_info['downloaded_file'] = str(video_files[0])
+                        else:
+                            # اگر در instagram نبود، از work_dir استفاده کن
+                            video_path = self.work_dir / 'input_video.mp4'
+                            if video_path.exists():
+                                # انتقال به فولدر instagram با نام جدید
+                                new_filename = self._get_instagram_filename(url, 'video', 'mp4')
+                                new_path = self.instagram_dir / new_filename
+                                import shutil
+                                shutil.move(str(video_path), str(new_path))
+                                post_info['downloaded_file'] = str(new_path)
+                            else:
+                                post_info['downloaded_file'] = str(self.work_dir / 'input_video.mp4')
+                        post_info['downloaded'] = True
+                        print("✅ ویدیو با موفقیت دانلود شد")
+                    else:
+                        post_info['downloaded'] = False
+                        post_info['error'] = 'خطا در دانلود ویدیو'
+                else:
+                    # دانلود تصویر
+                    print("🖼️ تشخیص داده شد: تصویر")
+                    import requests
+                    
+                    # اولویت: image_url -> media_url -> thumbnail
+                    image_url = post_info.get('image_url') or post_info.get('media_url') or post_info.get('thumbnail', '')
+                    
+                    # اگر URL موجود نبود، از دانلود مستقیم یا yt-dlp استفاده کن
+                    if not image_url:
+                        print("⚠️ URL تصویر یافت نشد، تلاش برای دانلود...")
+                        # ابتدا تلاش با دانلود مستقیم
+                        success = self._download_instagram_image_direct(url)
+                        if not success:
+                            # اگر مستقیم کار نکرد، از yt-dlp استفاده کن
+                            success = self._download_instagram_image_with_ytdlp(url)
+                        if success:
+                            # جستجو بر اساس post_id
+                            post_id = self._extract_instagram_id(url)
+                            if post_id:
+                                image_files = list(self.instagram_dir.glob(f'instagram_image_{post_id}.*'))
+                            else:
+                                image_files = list(self.instagram_dir.glob('instagram_image_*.*'))
+                            if image_files:
+                                post_info['downloaded_file'] = str(image_files[0])
+                                post_info['downloaded'] = True
+                            else:
+                                post_info['downloaded'] = False
+                                post_info['error'] = 'فایل دانلود شده یافت نشد'
+                        else:
+                            post_info['downloaded'] = False
+                            post_info['error'] = 'خطا در دانلود تصویر با yt-dlp'
+                    elif image_url:
+                        # تشخیص extension از URL
+                        image_ext = 'jpg'  # پیش‌فرض
+                        url_lower = image_url.lower()
+                        if '.jpg' in url_lower or 'jpeg' in url_lower:
+                            image_ext = 'jpg'
+                        elif '.png' in url_lower:
+                            image_ext = 'png'
+                        elif '.webp' in url_lower:
+                            image_ext = 'webp'
+                        elif '.gif' in url_lower:
+                            image_ext = 'gif'
+                        
+                        try:
+                            print(f"📥 در حال دانلود تصویر از: {image_url[:80]}...")
+                            headers = {
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                'Referer': 'https://www.instagram.com/'
+                            }
+                            response = requests.get(image_url, headers=headers, timeout=30, stream=True)
+                            
+                            if response.status_code == 200:
+                                image_filename = self._get_instagram_filename(url, 'image', image_ext)
+                                image_path = self.instagram_dir / image_filename
+                                with open(image_path, 'wb') as f:
+                                    for chunk in response.iter_content(chunk_size=8192):
+                                        if chunk:
+                                            f.write(chunk)
+                                post_info['downloaded_file'] = str(image_path)
+                                post_info['downloaded'] = True
+                                file_size = image_path.stat().st_size / (1024 * 1024)  # MB
+                                print(f"✅ تصویر با موفقیت دانلود شد: {image_path} ({file_size:.2f} MB)")
+                            else:
+                                # اگر دانلود مستقیم کار نکرد، از روش‌های دیگر استفاده کن
+                                print(f"⚠️ دانلود مستقیم ناموفق (HTTP {response.status_code})، تلاش با روش‌های دیگر...")
+                                # ابتدا تلاش با دانلود مستقیم از URL پست
+                                success = self._download_instagram_image_direct(url)
+                                if not success:
+                                    # اگر مستقیم کار نکرد، از yt-dlp استفاده کن
+                                    success = self._download_instagram_image_with_ytdlp(url)
+                                if success:
+                                    # پیدا کردن فایل دانلود شده
+                                    # جستجو بر اساس post_id
+                                    post_id = self._extract_instagram_id(url)
+                                    if post_id:
+                                        image_files = list(self.instagram_dir.glob(f'instagram_image_{post_id}.*'))
+                                    else:
+                                        image_files = list(self.instagram_dir.glob('instagram_image_*.*'))
+                                    if image_files:
+                                        post_info['downloaded_file'] = str(image_files[0])
+                                        post_info['downloaded'] = True
+                                    else:
+                                        post_info['downloaded'] = False
+                                        post_info['error'] = 'فایل دانلود شده یافت نشد'
+                                else:
+                                    post_info['downloaded'] = False
+                                    post_info['error'] = f'خطا در دانلود تصویر: HTTP {response.status_code}'
+                        except Exception as e:
+                            print(f"⚠️ خطا در دانلود مستقیم: {str(e)}")
+                            # تلاش با روش‌های دیگر
+                            print("🔄 تلاش با روش‌های دیگر...")
+                            # ابتدا تلاش با دانلود مستقیم از URL پست
+                            success = self._download_instagram_image_direct(url)
+                            if not success:
+                                # اگر مستقیم کار نکرد، از yt-dlp استفاده کن
+                                success = self._download_instagram_image_with_ytdlp(url)
+                            if success:
+                                # جستجو بر اساس post_id
+                                post_id = self._extract_instagram_id(url)
+                                if post_id:
+                                    image_files = list(self.instagram_dir.glob(f'instagram_image_{post_id}.*'))
+                                else:
+                                    image_files = list(self.instagram_dir.glob('instagram_image_*.*'))
+                                if image_files:
+                                    post_info['downloaded_file'] = str(image_files[0])
+                                    post_info['downloaded'] = True
+                                else:
+                                    post_info['downloaded'] = False
+                                    post_info['error'] = f'خطا در دانلود تصویر: {str(e)}'
+                            else:
+                                post_info['downloaded'] = False
+                                post_info['error'] = f'خطا در دانلود تصویر: {str(e)}'
+                    else:
+                        # اگر URL مستقیم نبود، از دانلود مستقیم یا yt-dlp استفاده کن
+                        print("📥 دانلود تصویر...")
+                        # ابتدا تلاش با دانلود مستقیم از URL پست
+                        success = self._download_instagram_image_direct(url)
+                        if not success:
+                            # اگر مستقیم کار نکرد، از yt-dlp استفاده کن
+                            success = self._download_instagram_image_with_ytdlp(url)
+                        if success:
+                            # جستجو بر اساس post_id
+                            post_id = self._extract_instagram_id(url)
+                            if post_id:
+                                image_files = list(self.instagram_dir.glob(f'instagram_image_{post_id}.*'))
+                            else:
+                                image_files = list(self.instagram_dir.glob('instagram_image_*.*'))
+                            if image_files:
+                                post_info['downloaded_file'] = str(image_files[0])
+                                post_info['downloaded'] = True
+                            else:
+                                post_info['downloaded'] = False
+                                post_info['error'] = 'فایل دانلود شده یافت نشد'
+                        else:
+                            post_info['downloaded'] = False
+                            post_info['error'] = 'URL تصویر یافت نشد و دانلود با yt-dlp ناموفق بود'
+            else:
+                post_info['downloaded'] = False
+            
+            # بررسی نهایی: اگر فایل دانلود شده اما downloaded_file تنظیم نشده
+            if download_media:
+                current_media_type = post_info.get('media_type', 'unknown')
+                if current_media_type == 'image' and not post_info.get('downloaded_file'):
+                    # جستجو بر اساس post_id
+                    post_id = self._extract_instagram_id(url)
+                    if post_id:
+                        existing_files = list(self.instagram_dir.glob(f'instagram_image_{post_id}.*'))
+                    else:
+                        existing_files = list(self.instagram_dir.glob('instagram_image_*.*'))
+                    if existing_files:
+                        post_info['downloaded_file'] = str(existing_files[0])
+                        post_info['downloaded'] = True
+                        print(f"✅ فایل دانلود شده یافت شد: {existing_files[0]}")
+                
+                # حذف خطا اگر فایل دانلود شده است
+                if post_info.get('downloaded') and post_info.get('downloaded_file'):
+                    if 'error' in post_info:
+                        # اگر فایل دانلود شده، خطا را حذف کن
+                        error_msg = post_info.pop('error')
+                        print(f"ℹ️ خطای قبلی نادیده گرفته شد چون فایل دانلود شد: {error_msg[:100]}")
+            
+            # ذخیره کپشن به عنوان فایل متنی
+            caption = post_info.get('caption', '')
+            if caption:
+                try:
+                    # استفاده از تابع helper برای ساخت نام فایل
+                    caption_filename_str = self._get_instagram_filename(url, 'caption', 'txt')
+                    caption_filename = self.instagram_dir / caption_filename_str
+                    
+                    # ذخیره کپشن
+                    with open(caption_filename, 'w', encoding='utf-8') as f:
+                        f.write(caption)
+                    
+                    post_info['caption_file'] = str(caption_filename)
+                    print(f"✅ کپشن ذخیره شد: {caption_filename}")
+                except Exception as e:
+                    print(f"⚠️ خطا در ذخیره کپشن: {str(e)}")
+            
+            return post_info
+            
+        except Exception as e:
+            print(f"❌ خطا در دانلود محتوای اینستاگرام: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {'error': f'خطا: {str(e)}'}
+    
+    def _download_instagram_image_direct(self, url: str) -> bool:
+        """
+        دانلود مستقیم تصویر اینستاگرام از URL پست
+        
+        Args:
+            url: لینک پست اینستاگرام
+        
+        Returns:
+            bool: True اگر موفق بود، False در غیر این صورت
+        """
+        try:
+            import requests
+            import re
+            
+            # استخراج post_id از URL
+            post_id_match = re.search(r'/p/([A-Za-z0-9_-]+)/?', url)
+            if not post_id_match:
+                return False
+            
+            post_id = post_id_match.group(1)
+            
+            # URL های مختلف برای دانلود تصویر
+            image_urls = [
+                f'https://www.instagram.com/p/{post_id}/media/?size=l',  # Large
+                f'https://www.instagram.com/p/{post_id}/media/?size=m',  # Medium
+                f'https://www.instagram.com/p/{post_id}/media/',         # Default
+            ]
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.instagram.com/',
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            }
+            
+            # اگر cookies موجود است، استفاده کن
+            cookies_dict = {}
+            if os.path.exists('cookies.txt'):
+                try:
+                    import http.cookiejar
+                    jar = http.cookiejar.MozillaCookieJar('cookies.txt')
+                    jar.load(ignore_discard=True, ignore_expires=True)
+                    cookies_dict = {cookie.name: cookie.value for cookie in jar}
+                except:
+                    pass
+            
+            for image_url in image_urls:
+                try:
+                    print(f"📥 تلاش دانلود از: {image_url}")
+                    response = requests.get(image_url, headers=headers, cookies=cookies_dict, timeout=30, stream=True, allow_redirects=True)
+                    
+                    if response.status_code == 200:
+                        # تشخیص extension از Content-Type
+                        content_type = response.headers.get('Content-Type', '')
+                        ext = 'jpg'
+                        if 'png' in content_type:
+                            ext = 'png'
+                        elif 'webp' in content_type:
+                            ext = 'webp'
+                        elif 'gif' in content_type:
+                            ext = 'gif'
+                        
+                        image_filename = self._get_instagram_filename(url, 'image', ext)
+                        image_path = self.instagram_dir / image_filename
+                        with open(image_path, 'wb') as f:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                        
+                        # بررسی اینکه فایل واقعاً یک تصویر است
+                        if image_path.stat().st_size > 0:
+                            print(f"✅ تصویر با موفقیت دانلود شد: {image_path}")
+                            return True
+                        else:
+                            image_path.unlink()
+                            continue
+                    else:
+                        print(f"⚠️ HTTP {response.status_code} برای {image_url}")
+                        continue
+                except Exception as e:
+                    print(f"⚠️ خطا در دانلود از {image_url}: {str(e)[:80]}")
+                    continue
+            
+            return False
+            
+        except Exception as e:
+            print(f"❌ خطا در دانلود مستقیم تصویر: {str(e)}")
+            return False
+    
+    def _download_instagram_image_with_ytdlp(self, url: str) -> bool:
+        """
+        دانلود تصویر اینستاگرام با استفاده از yt-dlp
+        
+        Args:
+            url: لینک پست اینستاگرام
+        
+        Returns:
+            bool: True اگر موفق بود، False در غیر این صورت
+        """
+        try:
+            # ابتدا تلاش با دانلود مستقیم
+            print("🔄 تلاش با دانلود مستقیم...")
+            if self._download_instagram_image_direct(url):
+                return True
+            
+            # اگر مستقیم کار نکرد، از yt-dlp استفاده کن
+            print("🔄 تلاش با yt-dlp...")
+            
+            # پاکسازی فایل‌های قبلی با post_id مشابه
+            post_id = self._extract_instagram_id(url)
+            if post_id:
+                for file in self.instagram_dir.glob(f'instagram_image_{post_id}.*'):
+                    file.unlink()
+            
+            format_option = 'best'
+            # استفاده از نام فایل بر اساس post_id
+            post_id = self._extract_instagram_id(url)
+            if post_id:
+                image_filename_base = f'instagram_image_{post_id}'
+            else:
+                timestamp = int(time.time())
+                image_filename_base = f'instagram_image_{timestamp}'
+            temp_filename = str(self.instagram_dir / f'{image_filename_base}.%(ext)s')
+            
+            # تنظیمات پایه
+            base_opts = {
+                'format': format_option,
+                'outtmpl': temp_filename,
+                'nocheckcertificate': True,
+                'ignoreerrors': False,
+                'no_warnings': False,
+                'quiet': False,
+                'socket_timeout': 30,
+                'retries': 1,
+                'fragment_retries': 1,
+                'extractor_retries': 1,
+            }
+            
+            # افزودن کوکی اگر موجود است
+            if os.path.exists('cookies.txt'):
+                base_opts['cookiefile'] = 'cookies.txt'
+                print("🍪 استفاده از فایل کوکی برای دانلود تصویر اینستاگرام")
+            
+            # استراتژی‌های مختلف دانلود
+            strategies = []
+            
+            # 1) پیش‌فرض با User-Agent مرورگر
+            s1 = {
+                **base_opts,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'referer': 'https://www.instagram.com/'
+            }
+            strategies.append(("Default+Chrome", s1))
+            
+            # 2) Mobile User-Agent
+            s2 = {
+                **base_opts,
+                'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
+                'referer': 'https://www.instagram.com/'
+            }
+            strategies.append(("Mobile", s2))
+            
+            # 3) بدون User-Agent خاص
+            s3 = {**base_opts}
+            strategies.append(("Minimal", s3))
+            
+            downloaded_file = None
+            last_error = None
+            
+            for name, opts in strategies:
+                try:
+                    print(f"🧪 تلاش دانلود تصویر اینستاگرام با استراتژی: {name} ...")
+                    # اضافه کردن extractor_args برای تصاویر
+                    opts_with_image = opts.copy()
+                    opts_with_image['extractor_args'] = {'instagram': {'include_image': True}}
+                    opts_with_image['ignoreerrors'] = True  # نادیده گرفتن خطاها
+                    
+                    with yt_dlp.YoutubeDL(opts_with_image) as ydl:
+                        try:
+                            info = ydl.extract_info(url, download=True)
+                            if info is None:
+                                print(f"   ❌ {name}: اطلاعات تصویر دریافت نشد")
+                                continue
+                            downloaded_file = ydl.prepare_filename(info)
+                        except yt_dlp.utils.DownloadError as e:
+                            error_str = str(e).lower()
+                            # اگر خطا مربوط به "no video" است، این طبیعی است برای تصاویر
+                            if 'no video' in error_str or 'there is no video' in error_str:
+                                print(f"   ℹ️ {name}: پست تصویر است (خطای 'no video' طبیعی است)")
+                                # تلاش برای دانلود با skip_download و سپس دانلود دستی
+                                try:
+                                    opts_info = opts_with_image.copy()
+                                    opts_info['skip_download'] = True
+                                    with yt_dlp.YoutubeDL(opts_info) as ydl_info:
+                                        info = ydl_info.extract_info(url, download=False)
+                                        if info:
+                                            # دانلود دستی از URL
+                                            image_url = info.get('url') or info.get('thumbnail')
+                                            if image_url:
+                                                import requests
+                                                response = requests.get(image_url, timeout=30, headers={
+                                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                                                })
+                                                if response.status_code == 200:
+                                                    ext = info.get('ext', 'jpg')
+                                                    image_filename = self._get_instagram_filename(url, 'image', ext)
+                                                    downloaded_file = str(self.instagram_dir / image_filename)
+                                                    with open(downloaded_file, 'wb') as f:
+                                                        f.write(response.content)
+                                                    print(f"   ✅ {name}: تصویر با دانلود دستی دریافت شد")
+                                                else:
+                                                    continue
+                                            else:
+                                                continue
+                                        else:
+                                            continue
+                                except Exception as e2:
+                                    print(f"   ⚠️ {name}: خطا در دانلود دستی: {str(e2)[:80]}...")
+                                    continue
+                            else:
+                                raise  # خطاهای دیگر را دوباره raise کن
+                    
+                    if downloaded_file and os.path.exists(downloaded_file):
+                        print(f"✅ دانلود تصویر اینستاگرام موفق با {name}")
+                        break
+                except Exception as e:
+                    last_error = str(e)
+                    print(f"   ❌ استراتژی {name} شکست خورد: {str(e)[:120]}...")
+                    continue
+            
+            if not downloaded_file:
+                if last_error:
+                    print(f"❌ همه استراتژی‌ها شکست خوردند. آخرین خطا: {last_error[:200]}...")
+                else:
+                    print("❌ همه استراتژی‌ها شکست خوردند.")
+                return False
+            
+            # بررسی اینکه فایل دانلود شده تصویر است
+            if os.path.exists(downloaded_file):
+                _, file_extension = os.path.splitext(downloaded_file)
+                # اگر extension مناسب نبود، تغییر بده
+                if file_extension.lower() not in ['.jpg', '.jpeg', '.png', '.webp', '.gif']:
+                    # سعی کن extension را از info بگیر
+                    try:
+                        with yt_dlp.YoutubeDL({'quiet': True, 'skip_download': True}) as ydl:
+                            info = ydl.extract_info(url, download=False)
+                            if info and info.get('ext'):
+                                new_ext = info.get('ext', 'jpg')
+                                image_filename = self._get_instagram_filename(url, 'image', new_ext)
+                                new_path = self.instagram_dir / image_filename
+                                os.rename(downloaded_file, str(new_path))
+                                downloaded_file = str(new_path)
+                    except:
+                        # اگر کار نکرد، به jpg تغییر بده
+                        image_filename = self._get_instagram_filename(url, 'image', 'jpg')
+                        new_path = self.instagram_dir / image_filename
+                        os.rename(downloaded_file, str(new_path))
+                        downloaded_file = str(new_path)
+                
+                print(f"✅ تصویر با موفقیت دانلود شد: {downloaded_file}")
+                return True
+            else:
+                print("❌ فایل دانلود نشد")
+                return False
+                
+        except Exception as e:
+            print(f"❌ خطا در دانلود تصویر اینستاگرام: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
     
     def _fallback_download(self, url: str) -> bool:
         """دانلود با تنظیمات جایگزین در صورت شکست"""
@@ -1101,12 +1915,36 @@ class VideoDubbingApp:
                             }
                         )
                         if target_language == "Persian (FA)":
-                            prompt = f"""کل همین فایل SRT کوچک را به فارسی ترجمه کن و فقط ساختار SRT را بدون هیچ توضیح اضافه حفظ کن.
-اعداد و بازه‌های زمانی را دست نزن، فقط متن را ترجمه کن.
+                            prompt = f"""وظیفه اصلی: ترجمه فایل SRT از انگلیسی به فارسی. خروجی نهایی باید فقط شامل زیرنویس‌های فارسی با لحن بسیار دوستانه باشد و ساختار خطوط شکسته را برای خوانایی بهتر اعمال کند.
+
+مراحل اجرا:
+
+درک مفهومی (Concept Understanding): ابتدا، متن کامل فایل SRT زیر را به دقت مطالعه کن تا مفهوم کلی، زمینه (Context) و لحن (Tone) ویدیو را به طور کامل درک کنی.
+
+ترجمه و شکستن خطوط (Translation & Splitting): پس از درک کامل، هر خط از متن زیرنویس انگلیسی را به فارسی ترجمه کن و همزمان، الزامات فنی و کیفی زیر را اعمال نما:
+
+الزامات شکستن خطوط (جدید و بسیار مهم):
+
+اگر یک خط ترجمه فارسی بیش از ۶ تا ۷ کلمه باشد، آن را به دو خط مجزا تقسیم کن.
+برای تقسیم، زمان‌بندی خط اصلی را به دو بازه زمانی جدید، متناسب با طول هر بخش ترجمه، تقسیم کن.
+
+الزامات کیفیت ترجمه:
+
+لحن بسیار دوستانه و صمیمی: ترجمه باید بسیار صمیمی و خودمانی (Casual/Friendly) باشد و از عبارات رایج در گفتگوی روزمره فارسی استفاده شود.
+بسیار روان و طبیعی (Native & Fluent): ترجمه باید کاملاً بومی به نظر برسد.
+
+الزامات فنی (بسیار مهم):
+
+فرمت خروجی (تنها بخش ترجمه): خروجی نهایی باید یک فایل SRT معتبر باشد که فقط شامل شماره‌گذاری، زمان‌بندی و متن ترجمه فارسی است. به هیچ وجه متن انگلیسی اصلی را در خروجی قرار نده.
+حفظ ساختار SRT: ساختار زمانی (Timestamps) و شماره‌بندی (Sequence Numbers) فایل SRT را دقیقاً حفظ کن و در صورت شکستن خط، شماره‌گذاری و زمان‌بندی را به‌روزرسانی نما.
+حفظ اعداد در متن: هر عدد یا رقمی که در متن انگلیسی زیرنویس وجود دارد، باید دقیقاً و بدون تغییر در ترجمه فارسی نیز آورده شود.
+عدم افزودن نقطه پایانی: در انتهای خطوط ترجمه شده فارسی، نقطه (.) اضافه نکن.
+
+فایل SRT برای ترجمه:
 
 {chunk_srt}
 
-ترجمه:"""
+ترجمه فارسی:"""
                         else:
                             prompt = f"""Translate this small SRT file to {target_language} preserving exact SRT structure (numbers and timings unchanged), translate text only.
 
