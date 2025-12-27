@@ -71,12 +71,19 @@ from youtube_api_client import YouTubeAPIClient, YouTubeSimpleAPI
 
 
 class VideoDubbingApp:
-    def __init__(self, api_key: str, youtube_api_key: str = None):
+    def __init__(self, api_key: str, youtube_api_key: str = None, 
+                 azure_endpoint: str = None, azure_api_key: str = None, 
+                 azure_model: str = "grok-4-fast-reasoning"):
         """Initialize the dubbing application with Google API key and optional YouTube API key"""
         self.api_key = api_key
         self.youtube_api_key = youtube_api_key
         genai.configure(api_key=api_key)
         self.client = genai_client.Client(api_key=api_key)
+        
+        # Initialize Azure OpenAI settings
+        self.azure_endpoint = azure_endpoint
+        self.azure_api_key = azure_api_key
+        self.azure_model = azure_model
         
         # Initialize YouTube API client if key is provided
         self.youtube_client = None
@@ -97,6 +104,8 @@ class VideoDubbingApp:
         self.instagram_dir.mkdir(exist_ok=True)
         # Shared session identifier used for naming outputs (YouTube ID or derived local ID)
         self.session_id: Optional[str] = None
+
+
 
     # ===== Session/ID helpers =====
     def set_session_id(self, id_str: str) -> None:
@@ -146,8 +155,8 @@ class VideoDubbingApp:
     def _output_video_path(self) -> Path:
         # Unified final output name
         if self.session_id:
-            return self.work_dir / f"dubbed_video_{self.session_id}.mp4"
-        return self.work_dir / 'dubbed_video.mp4'
+            return self.work_dir / f"dubbed_video__{self.session_id}_fa.mp4"
+        return self.work_dir / 'dubbed_video_fa.mp4'
         
     def clean_previous_files(self):
         """پاکسازی فایل‌های قبلی"""
@@ -1812,8 +1821,143 @@ class VideoDubbingApp:
             print(f"خطا در فشرده‌سازی: {str(e)}")
             return False
     
-    def translate_subtitles(self, target_language: str = "Persian (FA)") -> bool:
-        """ترجمه زیرنویس‌ها - ترجمه تکه‌ای برای جلوگیری از قطع شدن خروجی مدل"""
+    
+    def test_azure_connection(self) -> dict:
+        """تست اتصال به Azure OpenAI API
+        
+        Returns:
+            dict: {'success': bool, 'message': str, 'model': str}
+        """
+        try:
+            if not self.azure_endpoint or not self.azure_api_key:
+                return {
+                    'success': False,
+                    'message': 'Azure endpoint یا API key تنظیم نشده است',
+                    'model': None
+                }
+            
+            import requests
+            
+            # ساخت URL کامل
+            url = f"{self.azure_endpoint.rstrip('/')}/openai/v1/chat/completions"
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'api-key': self.azure_api_key
+            }
+            
+            # درخواست تست ساده
+            data = {
+                'model': self.azure_model,
+                'messages': [
+                    {'role': 'user', 'content': 'Hello, this is a test message.'}
+                ],
+                'max_tokens': 10
+            }
+            
+            print(f"🔍 در حال تست اتصال به Azure OpenAI...")
+            print(f"   Endpoint: {url}")
+            print(f"   Model: {self.azure_model}")
+            
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()
+                print(f"✅ اتصال موفقیت‌آمیز بود!")
+                return {
+                    'success': True,
+                    'message': f'اتصال به Azure OpenAI با موفقیت برقرار شد. مدل: {self.azure_model}',
+                    'model': self.azure_model
+                }
+            else:
+                error_msg = f"خطای HTTP {response.status_code}: {response.text[:200]}"
+                print(f"❌ {error_msg}")
+                return {
+                    'success': False,
+                    'message': error_msg,
+                    'model': self.azure_model
+                }
+                
+        except Exception as e:
+            error_msg = f"خطا در اتصال: {str(e)}"
+            print(f"❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'success': False,
+                'message': error_msg,
+                'model': self.azure_model
+            }
+    
+    def translate_with_azure_openai(self, text: str, target_language: str = "Persian (FA)") -> Optional[str]:
+        """ترجمه متن با استفاده از Azure OpenAI
+        
+        Args:
+            text: متن برای ترجمه
+            target_language: زبان مقصد
+            
+        Returns:
+            متن ترجمه شده یا None در صورت خطا
+        """
+        try:
+            if not self.azure_endpoint or not self.azure_api_key:
+                print("❌ Azure endpoint یا API key تنظیم نشده است")
+                return None
+            
+            import requests
+            
+            # ساخت URL کامل
+            url = f"{self.azure_endpoint.rstrip('/')}/openai/v1/chat/completions"
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'api-key': self.azure_api_key
+            }
+            
+            # ساخت prompt بر اساس زبان مقصد
+            if target_language == "Persian (FA)":
+                system_prompt = """شما یک مترجم حرفه‌ای هستید که متخصص ترجمه زیرنویس‌های ویدیو به فارسی هستید.
+وظیفه شما ترجمه دقیق و روان متن به فارسی است.
+فقط ترجمه را برگردانید، بدون توضیح اضافه."""
+                user_prompt = f"متن زیر را به فارسی ترجمه کن:\n\n{text}"
+            else:
+                system_prompt = f"You are a professional translator. Translate the following text to {target_language}. Return only the translation without any explanation."
+                user_prompt = text
+            
+            data = {
+                'model': self.azure_model,
+                'messages': [
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': user_prompt}
+                ],
+                'temperature': 0.3,
+                'max_tokens': 4000
+            }
+            
+            response = requests.post(url, headers=headers, json=data, timeout=60)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if 'choices' in result and len(result['choices']) > 0:
+                    translated_text = result['choices'][0]['message']['content'].strip()
+                    return translated_text
+                else:
+                    print(f"❌ پاسخ نامعتبر از Azure OpenAI: {result}")
+                    return None
+            else:
+                print(f"❌ خطای HTTP {response.status_code}: {response.text[:200]}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ خطا در ترجمه با Azure OpenAI: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def translate_subtitles(self, target_language: str = "Persian (FA)", 
+                           provider: str = "Gemini", 
+                           model_name: str = None) -> bool:
+        """ترجمه زیرنویس‌ها با استفاده از Gemini"""
         try:
             # Ensure session_id is set before looking for the file
             if not self.session_id:
@@ -1874,7 +2018,7 @@ class VideoDubbingApp:
             print(f"📝 تعداد زیرنویس‌های انگلیسی: {len(src_entries)}")
 
             # 2) Chunking helper (limit by count or characters)
-            def chunk_entries(entries, max_items=60, max_chars=5000):
+            def chunk_entries(entries, max_items=15, max_chars=4000):
                 chunks, cur, cur_chars = [], [], 0
                 for idx, st, en, tx in entries:
                     block = f"{idx}\n{st} --> {en}\n{tx.strip()}\n\n"
@@ -1902,64 +2046,93 @@ class VideoDubbingApp:
                 return "\n".join(lines)
 
             def translate_chunk(chunk_srt):
-                models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest"]
-                for m in models:
-                    try:
-                        model = genai.GenerativeModel(
-                            m,
-                            safety_settings={
-                                genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
-                                genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH: genai.types.HarmBlockThreshold.BLOCK_NONE,
-                                genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: genai.types.HarmBlockThreshold.BLOCK_NONE,
-                                genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
-                            }
-                        )
-                        if target_language == "Persian (FA)":
-                            prompt = f"""وظیفه اصلی: ترجمه فایل SRT از انگلیسی به فارسی. خروجی نهایی باید فقط شامل زیرنویس‌های فارسی با لحن بسیار دوستانه باشد و ساختار خطوط شکسته را برای خوانایی بهتر اعمال کند.
+                # Check provider and use appropriate translation method
+                if provider == "Azure":
+                    # Azure OpenAI translation
+                    if target_language == "Persian (FA)":
+                        prompt = f"""شما یک مترجم حرفه‌ای هستید که متخصص ترجمه زیرنویس‌های ویدیو به فارسی هستید.
 
-مراحل اجرا:
+## وظیفه شما:
+فایل زیرنویس SRT انگلیسی رو دریافت می‌کنید و باید اون رو به فارسی روان و طبیعی ترجمه کنید.
 
-درک مفهومی (Concept Understanding): ابتدا، متن کامل فایل SRT زیر را به دقت مطالعه کن تا مفهوم کلی، زمینه (Context) و لحن (Tone) ویدیو را به طور کامل درک کنی.
-
-ترجمه و شکستن خطوط (Translation & Splitting): پس از درک کامل، هر خط از متن زیرنویس انگلیسی را به فارسی ترجمه کن و همزمان، الزامات فنی و کیفی زیر را اعمال نما:
-
-الزامات شکستن خطوط (جدید و بسیار مهم):
-
-اگر یک خط ترجمه فارسی بیش از ۶ تا ۷ کلمه باشد، آن را به دو خط مجزا تقسیم کن.
-برای تقسیم، زمان‌بندی خط اصلی را به دو بازه زمانی جدید، متناسب با طول هر بخش ترجمه، تقسیم کن.
-
-الزامات کیفیت ترجمه:
-
-لحن بسیار دوستانه و صمیمی: ترجمه باید بسیار صمیمی و خودمانی (Casual/Friendly) باشد و از عبارات رایج در گفتگوی روزمره فارسی استفاده شود.
-بسیار روان و طبیعی (Native & Fluent): ترجمه باید کاملاً بومی به نظر برسد.
-
-الزامات فنی (بسیار مهم):
-
-فرمت خروجی (تنها بخش ترجمه): خروجی نهایی باید یک فایل SRT معتبر باشد که فقط شامل شماره‌گذاری، زمان‌بندی و متن ترجمه فارسی است. به هیچ وجه متن انگلیسی اصلی را در خروجی قرار نده.
-حفظ ساختار SRT: ساختار زمانی (Timestamps) و شماره‌بندی (Sequence Numbers) فایل SRT را دقیقاً حفظ کن و در صورت شکستن خط، شماره‌گذاری و زمان‌بندی را به‌روزرسانی نما.
-حفظ اعداد در متن: هر عدد یا رقمی که در متن انگلیسی زیرنویس وجود دارد، باید دقیقاً و بدون تغییر در ترجمه فارسی نیز آورده شود.
-عدم افزودن نقطه پایانی: در انتهای خطوط ترجمه شده فارسی، نقطه (.) اضافه نکن.
+## قوانین بسیار مهم:
+۱. تعداد سگمنت‌ها: فایل خروجی باید دقیقاً {len(chunk)} سگمنت داشته باشد (دقیقاً مشابه ورودی). به هیچ وجه سگمنت‌ها را با هم ترکیب یا حذف نکن.
+۲. حفظ زمان‌بندی: تایم‌کدهای SRT رو دست نزن و دقیقاً همونطور که هست نگه دار.
+۳. کیفیت ترجمه: ترجمه باید خیلی روان و نیتیو باشه، مفهوم و پیام اصلی رو منتقل کن (زبان محاوره و روزمره فارسی).
+۴. فرمت خروجی: فقط و فقط محتوای SRT را برگردان. هیچ توضیح اضافه یا متنی قبل و بعد از آن ننویس.
+۵. شماره‌گذاری: از همان شماره‌های ترتیب ورودی استفاده کن.
 
 فایل SRT برای ترجمه:
 
 {chunk_srt}
 
 ترجمه فارسی:"""
-                        else:
-                            prompt = f"""Translate this small SRT file to {target_language} preserving exact SRT structure (numbers and timings unchanged), translate text only.
+                    else:
+                        prompt = f"""Translate this SRT file to {target_language}.
+Maintain exact 1-to-1 mapping (do NOT split segments).
+Keep original timestamps unchanged.
+Output only the SRT content.
+
+{chunk_srt}
+
+Translation:"""
+                    
+                    # Use Azure OpenAI for translation
+                    translated = self.translate_with_azure_openai(prompt, target_language)
+                    if translated:
+                        time.sleep(2)
+                        return self._clean_srt_response(translated)
+                    return None
+                else:
+                    # Gemini translation logic
+                    models = [model_name] if model_name and "gemini" in model_name.lower() else ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-lite-latest"]
+                    for m in models:
+                        try:
+                            model = genai.GenerativeModel(
+                                m,
+                                safety_settings={
+                                    genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
+                                    genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH: genai.types.HarmBlockThreshold.BLOCK_NONE,
+                                    genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: genai.types.HarmBlockThreshold.BLOCK_NONE,
+                                    genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
+                                }
+                            )
+                            if target_language == "Persian (FA)":
+                                prompt = f"""شما یک مترجم حرفه‌ای هستید که متخصص ترجمه زیرنویس‌های ویدیو به فارسی هستید.
+
+## وظیفه شما:
+فایل زیرنویس SRT انگلیسی رو دریافت می‌کنید و باید اون رو به فارسی روان و طبیعی ترجمه کنید.
+
+## قوانین بسیار مهم:
+۱. تعداد سگمنت‌ها: فایل خروجی باید دقیقاً {len(chunk)} سگمنت داشته باشد (دقیقاً مشابه ورودی). به هیچ وجه سگمنت‌ها را با هم ترکیب یا حذف نکن.
+۲. حفظ زمان‌بندی: تایم‌کدهای SRT رو دست نزن و دقیقاً همونطور که هست نگه دار.
+۳. کیفیت ترجمه: ترجمه باید خیلی روان و نیتیو باشه، مفهوم و پیام اصلی رو منتقل کن (زبان محاوره و روزمره فارسی).
+۴. فرمت خروجی: فقط و فقط محتوای SRT را برگردان. هیچ توضیح اضافه یا متنی قبل و بعد از آن ننویس.
+۵. شماره‌گذاری: از همان شماره‌های ترتیب ورودی استفاده کن.
+
+فایل SRT برای ترجمه:
+
+{chunk_srt}
+
+ترجمه فارسی:"""
+                            else:
+                                prompt = f"""Translate this SRT file to {target_language}.
+Maintain exact 1-to-1 mapping (do NOT split segments).
+Keep original timestamps unchanged.
+Output only the SRT content.
 
 {chunk_srt}
 
 Translation:"""
 
-                        resp = model.generate_content(prompt)
-                        time.sleep(2)
-                        return self._clean_srt_response(resp.text.strip())
-                    except Exception as e:
-                        print(f"⚠️ خطا در مدل {m}: {str(e)}")
-                        time.sleep(3)
-                        continue
-                return None
+                            resp = model.generate_content(prompt)
+                            time.sleep(2)
+                            return self._clean_srt_response(resp.text.strip())
+                        except Exception as e:
+                            print(f"⚠️ خطا در مدل {m}: {str(e)}")
+                            time.sleep(3)
+                            continue
+                    return None
 
             # 4) Parse translated chunk into (text) list by aligning with original times
             def parse_translated_chunk(translated_srt):
@@ -2555,91 +2728,23 @@ Translation:"""
             return False
     
     def _clean_srt_response(self, response_text: str) -> str:
-        """پاکسازی پاسخ Gemini از توضیحات اضافی و حفظ ساختار SRT"""
+        """پاکسازی پاسخ Gemini از تگ‌های مارک‌داون و توضیحات احتمالی"""
         try:
-            lines = response_text.split('\n')
-            cleaned_lines = []
-            in_srt_content = False
-            subtitle_count = 0
-            found_first_subtitle = False
+            cleaned = response_text.strip()
+            # حذف تگ‌های کد مارک‌داون
+            if cleaned.startswith("```"):
+                # حذف خط اول (مثل ```srt یا ```)
+                lines = cleaned.split('\n')
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                # حذف خط آخر اگر ``` است
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                cleaned = '\n'.join(lines).strip()
             
-            for i, line in enumerate(lines):
-                line = line.strip()
-                
-                # اگر خط خالی است، آن را حفظ کن
-                if not line:
-                    if in_srt_content:
-                        cleaned_lines.append(line)
-                    continue
-                
-                # بررسی اینکه آیا این خط شروع یک زیرنویس است (شماره)
-                if line.isdigit() and not found_first_subtitle:
-                    # بررسی اینکه آیا این اولین زیرنویس است (شماره 1)
-                    if line == "1":
-                        found_first_subtitle = True
-                        in_srt_content = True
-                        subtitle_count += 1
-                        cleaned_lines.append(line)
-                        continue
-                    else:
-                        # اگر شماره 1 نیست، نادیده بگیر
-                        continue
-                elif line.isdigit() and found_first_subtitle:
-                    # زیرنویس‌های بعدی
-                    in_srt_content = True
-                    subtitle_count += 1
-                    cleaned_lines.append(line)
-                    continue
-                
-                # اگر در محتوای SRT هستیم، خط را پردازش کن
-                if in_srt_content:
-                    # اگر خط زمان‌بندی است، آن را حفظ کن
-                    if '-->' in line:
-                        cleaned_lines.append(line)
-                        continue
-                    
-                    # اگر خط متن است، بررسی کن که آیا شامل هر دو زبان است
-                    if not line.isdigit() and '-->' not in line:
-                        # بررسی اینکه آیا خط شامل متن انگلیسی و فارسی است
-                        cleaned_line = self._extract_persian_text(line)
-                        if cleaned_line:
-                            cleaned_lines.append(cleaned_line)
-                        continue
-                    
-                    # در غیر این صورت، خط را حفظ کن
-                    cleaned_lines.append(line)
-                    continue
-                
-                # اگر هنوز در محتوای SRT نیستیم، بررسی کن که آیا این خط توضیح اضافی است
-                explanation_keywords = [
-                    'متن کامل فایل SRT', 'ترجمه فارسی', 'فایل SRT', 'زیرنویس', 'ترجمه',
-                    'به همین دلیل', 'درک کامل', 'موضوع و مفهوم', 'عملاً غیرممکن', 'متنی بی‌معنی',
-                    'انتظارات شما', 'اگر متن اصلی', 'لطفاً زبان', 'در صورت امکان', 'در حال حاضر',
-                    'قادر به ارائه', 'بر اساس فرض', 'SRT File', 'Translation', 'subtitle',
-                    'translate', 'file', 'content', 'text', 'because', 'unable', 'impossible',
-                    'cannot', 'please', 'if you have', 'currently', 'based on', 'در خط', 'به نظر می‌رسد',
-                    'تحریف شده', 'احتمالاً', 'باشد', 'است', 'I\'ve', 'Wow', 'amount', 'money'
-                ]
-                
-                # اگر خط حاوی کلمات توضیحی است، آن را نادیده بگیر
-                if any(keyword in line for keyword in explanation_keywords):
-                    continue
-                
-                # اگر خط کوتاه است و احتمالاً توضیح است، نادیده بگیر
-                if len(line) < 20 and not line[0].isdigit() and '-->' not in line:
-                    continue
-                
-                # در غیر این صورت، خط را حفظ کن
-                cleaned_lines.append(line)
-            
-            # اگر هیچ زیرنویسی پیدا نشد، کل متن را برگردان
-            if subtitle_count == 0:
-                print("⚠️ هیچ زیرنویسی در پاسخ یافت نشد، کل متن برگردانده می‌شود")
-                return response_text
-            
-            cleaned_text = '\n'.join(cleaned_lines)
-            print(f"✅ {subtitle_count} زیرنویس از پاسخ پاکسازی شد")
-            return cleaned_text
+            # اگر هنوز در ابتدا یا انتها ``` دارد، آن‌ها را پاک کن
+            cleaned = cleaned.replace("```srt", "").replace("```", "").strip()
+            return cleaned
             
         except Exception as e:
             print(f"❌ خطا در پاکسازی پاسخ: {str(e)}")
@@ -3250,14 +3355,27 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             import re
             
             # حذف BOM و کنترل‌های جهت‌دهی و فواصل صفرعرض مشکل‌زا
+            # نکته: \u200f (RLM) را حذف نمی‌کنیم چون برای جهت‌دهی صحیح اعداد لازم است
             control_chars = [
                 '\ufeff',  # BOM
-                '\u200e', '\u200f',  # LRM, RLM
+                '\u200e',          # LRM (Left-to-Right Mark)
                 '\u202a', '\u202b', '\u202c', '\u202d', '\u202e',  # bidi controls
                 '\u200b', '\u200c', '\u200d', '\u2060',  # zero-width chars (ZWS, ZWNJ, ZWJ, word joiner)
             ]
             for ch in control_chars:
                 text = text.replace(ch, ' ' if ch in ['\u200b', '\u200c', '\u200d', '\u2060'] else '')
+
+            # اضافه کردن RLM به ابتدای هر خط برای اجبار به جهت‌دهی راست‌به‌چپ
+            # این کار باعث می‌شود اعداد در ابتدای جملات فارسی درست نمایش داده شوند
+            lines = []
+            for line in text.split('\n'):
+                # اگر خط حاوی حروف فارسی است، RLM اضافه کن
+                if re.search('[\u0600-\u06FF]', line):
+                    # اگر قبلاً ندارد اضافه کن
+                    if not line.startswith('\u200f'):
+                        line = '\u200f' + line
+                lines.append(line)
+            text = '\n'.join(lines)
 
             # تبدیل فرم‌های نمایشی عربی به یونیکد سازگار (حل مشکل «لا»)
             # NFKC پرزنتیشن‌فرم‌ها را به حروف پایه تبدیل می‌کند
@@ -3535,7 +3653,7 @@ ScriptType: v4.00+
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{config['fontsize']},{text_color},{text_color},{outline_color},{bg_color},{1 if config.get('bold', False) else 0},{1 if config.get('italic', False) else 0},0,0,100,100,0,0,{border_style},{config.get('outline_width', 0)},{shadow},{alignment},10,10,{margin_v},1
+Style: Default,{font_name},{config['fontsize']},{text_color},{text_color},{outline_color},{bg_color},{1 if config.get('bold', False) else 0},{1 if config.get('italic', False) else 0},0,0,100,100,0,0,{border_style},{config.get('outline_width', 0)},{shadow},{alignment},10,10,{margin_v},178
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

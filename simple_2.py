@@ -159,17 +159,20 @@ def get_fixed_text_config(
 
 # تابع برای ایجاد instance از کلاس دوبله
 @st.cache_resource
-def get_dubbing_app():
+def get_dubbing_app(gemini_key, azure_endpoint=None, azure_api_key=None, azure_model="grok-4-fast-reasoning"):
     """ایجاد instance از کلاس دوبله با cache"""
     try:
         from dubbing_functions import VideoDubbingApp
-        return VideoDubbingApp(API_KEY)
+        return VideoDubbingApp(gemini_key, azure_endpoint=azure_endpoint, 
+                              azure_api_key=azure_api_key, azure_model=azure_model)
     except Exception as e:
-        st.error(f"❌ خطا در اتصال به Google AI: {str(e)}")
+        st.error(f"❌ خطا در اتصال به هوش مصنوعی: {str(e)}")
         return None
 
-# بررسی اتصال
-dubbing_app = get_dubbing_app()
+
+
+# بررسی اتصال (با تنظیمات پیش‌فرض Gemini)
+dubbing_app = get_dubbing_app(API_KEY)
 if dubbing_app is None:
     st.stop()
 else:
@@ -188,8 +191,66 @@ youtube_url = st.text_input(
 # ورودی جایگزین: آپلود CSV حاوی لیست لینک‌ها
 csv_file = st.file_uploader("یا فایل CSV شامل لیست لینک‌های یوتیوب/اینستاگرام را آپلود کنید", type=["csv"])
 
+
 # تنظیمات قابل تغییر
 with st.expander("⚙️ تنظیمات قابل تغییر", expanded=False):
+    st.markdown("### 🤖 تنظیمات ترجمه (Translation Provider)")
+    
+    # انتخاب Translation Provider
+    translation_provider = st.radio(
+        "انتخاب سرویس ترجمه:",
+        ["Gemini (Google AI)", "Azure OpenAI"],
+        index=0,
+        key="translation_provider"
+    )
+    
+    # تنظیمات Azure OpenAI
+    if translation_provider == "Azure OpenAI":
+        st.markdown("#### ⚙️ تنظیمات Azure OpenAI")
+        
+        col_azure1, col_azure2 = st.columns(2)
+        
+        with col_azure1:
+            azure_endpoint = st.text_input(
+                "Azure Endpoint:",
+                value="", # Removed hardcoded value
+                placeholder="https://your-resource.openai.azure.com",
+                key="azure_endpoint"
+            )
+            
+            azure_model = st.text_input(
+                "Model Name:",
+                value="grok-4-fast-reasoning",
+                placeholder="grok-4-fast-reasoning",
+                key="azure_model"
+            )
+        
+        with col_azure2:
+            azure_api_key = st.text_input(
+                "Azure API Key:",
+                value="",
+                type="password",
+                placeholder="Enter your Azure API key",
+                key="azure_api_key"
+            )
+            
+            # دکمه تست اتصال
+            if st.button("🔍 Test Azure Connection", key="test_azure_btn"):
+                with st.spinner("در حال تست اتصال..."):
+                    test_app = get_dubbing_app(
+                        API_KEY, 
+                        azure_endpoint=azure_endpoint,
+                        azure_api_key=azure_api_key,
+                        azure_model=azure_model
+                    )
+                    if test_app:
+                        result = test_app.test_azure_connection()
+                        if result['success']:
+                            st.success(f"✅ {result['message']}")
+                        else:
+                            st.error(f"❌ {result['message']}")
+    
+    st.markdown("---")
     st.markdown("### 📝 تنظیمات زیرنویس")
     
     col1, col2 = st.columns(2)
@@ -431,13 +492,6 @@ with st.expander("⚙️ تنظیمات قابل تغییر", expanded=False):
             key="fixed_bold_checkbox"
         )
         st.session_state.fixed_bold = fixed_bold
-        
-        fixed_italic = st.checkbox(
-            "متن ثابت کج (Italic):",
-            value=DEFAULT_FIXED_ITALIC,
-            key="fixed_italic_checkbox"
-        )
-        st.session_state.fixed_italic = fixed_italic
 
 # نمایش تنظیمات ثابت
 with st.expander("ℹ️ تنظیمات سیستم (غیرقابل تغییر)"):
@@ -528,8 +582,27 @@ if st.button("🚀 شروع پردازش", type="primary", use_container_width=T
                 continue
 
         # 3) ترجمه
-        with st.spinner("🌐 ترجمه زیرنویس..."):
-            if not dubbing_app.translate_subtitles(TARGET_LANGUAGE):
+        # بررسی اینکه آیا باید از Azure استفاده کنیم
+        provider_name = "Gemini"
+        if 'translation_provider' in st.session_state and st.session_state.translation_provider == "Azure OpenAI":
+            provider_name = "Azure"
+            # حفظ session_id فعلی قبل از بازسازی
+            current_sid = dubbing_app.session_id
+            # ایجاد dubbing app با تنظیمات Azure
+            if 'azure_endpoint' in st.session_state and 'azure_api_key' in st.session_state:
+                dubbing_app = get_dubbing_app(
+                    API_KEY,
+                    azure_endpoint=st.session_state.azure_endpoint,
+                    azure_api_key=st.session_state.azure_api_key,
+                    azure_model=st.session_state.get('azure_model', 'grok-4-fast-reasoning')
+                )
+                # بازیابی session_id
+                if current_sid:
+                    dubbing_app.set_session_id(current_sid)
+        
+        spinner_text = f"🌐 ترجمه زیرنویس با {provider_name}..."
+        with st.spinner(spinner_text):
+            if not dubbing_app.translate_subtitles(TARGET_LANGUAGE, provider=provider_name):
                 results.append((url, "translate_failed"))
                 continue
 
@@ -621,4 +694,22 @@ st.markdown("""
 <p>ساخته شده با Streamlit و Google AI</p>
 </div>
 """, unsafe_allow_html=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

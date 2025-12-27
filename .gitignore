@@ -17,6 +17,10 @@ temp/
 *.mp4
 *.srt
 *.zip
+*.csv
+cookies*.txt
+cookies*.json
+*.log
 
 # OAuth and credentials (security)
 youtube_credentials*.json

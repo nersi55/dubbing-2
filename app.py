@@ -83,8 +83,8 @@ with st.sidebar:
     # روش آپلود
     upload_method = st.radio(
         "روش آپلود ویدیو",
-        ["یوتیوب", "فایل محلی"],
-        help="انتخاب کنید که ویدیو را از یوتیوب دانلود کنید یا فایل محلی آپلود کنید"
+        ["یوتیوب", "اینستاگرام", "فایل محلی"],
+        help="انتخاب کنید که ویدیو را از یوتیوب/اینستاگرام دانلود کنید یا فایل محلی آپلود کنید"
     )
     
     # تنظیمات ترجمه
@@ -166,6 +166,27 @@ if upload_method == "یوتیوب":
         else:
             st.warning("لطفاً لینک ویدیو را وارد کنید")
 
+elif upload_method == "اینستاگرام":
+    instagram_url = st.text_input(
+        "🔗 لینک ویدیو اینستاگرام",
+        placeholder="https://www.instagram.com/reel/... یا https://www.instagram.com/p/...",
+        help="لینک کامل ویدیو اینستاگرام (Reel یا Post) را اینجا وارد کنید"
+    )
+    
+    st.info("💡 **نکته**: برای محتوای خصوصی یا Stories، ممکن است نیاز به فایل `cookies.txt` باشد")
+    
+    if st.button("📥 دانلود ویدیو", type="primary"):
+        if instagram_url:
+            with st.spinner("در حال دانلود ویدیو از اینستاگرام..."):
+                success = st.session_state['dubbing_app'].download_instagram_video(instagram_url)
+                if success:
+                    st.success("✅ ویدیو با موفقیت دانلود شد")
+                    st.session_state['video_downloaded'] = True
+                else:
+                    st.error("❌ خطا در دانلود ویدیو")
+        else:
+            st.warning("لطفاً لینک ویدیو را وارد کنید")
+
 else:  # فایل محلی
     uploaded_file = st.file_uploader(
         "📁 انتخاب فایل ویدیو",
@@ -204,7 +225,7 @@ if st.session_state.get('video_downloaded', False):
             if extraction_method == "Whisper (توصیه می‌شود)":
                 success = st.session_state['dubbing_app'].extract_audio_with_whisper()
             else:  # زیرنویس یوتیوب
-                if upload_method == "یوتیوب" and youtube_url:
+                if upload_method == "یوتیوب" and 'youtube_url' in locals() and youtube_url:
                     success = st.session_state['dubbing_app'].extract_transcript_from_youtube(youtube_url)
                 else:
                     st.error("برای استفاده از زیرنویس یوتیوب، باید ویدیو را از یوتیوب دانلود کنید")

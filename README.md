@@ -282,7 +282,7 @@ streamlit run simple_Yashans.py
 ### نکات مهم:
 - برای پست‌های خصوصی، فایل `cookies.txt` لازم است
 - مطمئن شوید `yt-dlp` به‌روز است: `pip install -U yt-dlp`
-- فایل‌های دانلود شده در `dubbing_work/instagram/` ذخیره می‌شوند
+- فایل‌های دانلود شده در `dubbing_work/instagram/` ذخیره می‌شوندup
 
 
 آدرس‌های دسترسی:
