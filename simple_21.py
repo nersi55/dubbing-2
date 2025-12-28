@@ -89,23 +89,28 @@ DEFAULT_SUBTITLE_OUTLINE_COLOR = "white"
 DEFAULT_SUBTITLE_OUTLINE_WIDTH = 1
 DEFAULT_SUBTITLE_POSITION = "bottom_center"
 DEFAULT_SUBTITLE_MARGIN_V = 40
+DEFAULT_SUBTITLE_SHADOW = 0
+DEFAULT_SUBTITLE_SHADOW_COLOR = "black"
+DEFAULT_SUBTITLE_BOLD = True
+DEFAULT_SUBTITLE_ITALIC = False
 
 # مقادیر پیش‌فرض متن ثابت (واترمارک)
-DEFAULT_FIXED_ENABLED = False
-DEFAULT_FIXED_TEXT = "ققنوس شانس"
+DEFAULT_FIXED_ENABLED = True
+DEFAULT_FIXED_TEXT = "ترجمه و زیرنویس ققنوس شانس"
 DEFAULT_FIXED_FONT = "vazirmatn"
-DEFAULT_FIXED_FONTSIZE = 16
-DEFAULT_FIXED_COLOR = "white"
-DEFAULT_FIXED_BG_COLOR = "black"
-DEFAULT_FIXED_POSITION = "top_right"
-DEFAULT_FIXED_MARGIN_BOTTOM = 20
-DEFAULT_FIXED_OPACITY = 0.7
-DEFAULT_FIXED_BOLD = True
+DEFAULT_FIXED_FONTSIZE = 9
+DEFAULT_FIXED_COLOR = "yellow"
+DEFAULT_FIXED_BG_COLOR = "none"
+DEFAULT_FIXED_POSITION = "bottom_center"
+DEFAULT_FIXED_MARGIN_BOTTOM = 10
+DEFAULT_FIXED_OPACITY = 1.0
+DEFAULT_FIXED_BOLD = False
 DEFAULT_FIXED_ITALIC = False
 
 # تابع کمکی برای ایجاد دیکشنری تنظیمات زیرنویس
 def create_subtitle_config(font=None, fontsize=None, color=None, bg_color=None, 
-                           outline_color=None, outline_width=None, position=None, margin_v=None):
+                           outline_color=None, outline_width=None, position=None, margin_v=None,
+                           shadow=None, shadow_color=None, bold=None, italic=None):
     return {
         "font": font or DEFAULT_SUBTITLE_FONT,
         "fontsize": fontsize or DEFAULT_SUBTITLE_FONTSIZE,
@@ -114,7 +119,11 @@ def create_subtitle_config(font=None, fontsize=None, color=None, bg_color=None,
         "outline_color": outline_color or DEFAULT_SUBTITLE_OUTLINE_COLOR,
         "outline_width": outline_width or DEFAULT_SUBTITLE_OUTLINE_WIDTH,
         "position": position or DEFAULT_SUBTITLE_POSITION,
-        "margin_v": margin_v or DEFAULT_SUBTITLE_MARGIN_V
+        "margin_v": margin_v or DEFAULT_SUBTITLE_MARGIN_V,
+        "shadow": shadow if shadow is not None else DEFAULT_SUBTITLE_SHADOW,
+        "shadow_color": shadow_color or DEFAULT_SUBTITLE_SHADOW_COLOR,
+        "bold": bold if bold is not None else DEFAULT_SUBTITLE_BOLD,
+        "italic": italic if italic is not None else DEFAULT_SUBTITLE_ITALIC
     }
 
 # تابع کمکی برای ایجاد دیکشنری تنظیمات متن ثابت
@@ -233,32 +242,92 @@ with st.expander("⚙️ تنظیمات هوش مصنوعی (API Keys)", expande
     
     col_sub1, col_sub2 = st.columns(2)
     with col_sub1:
+        # فونت
         subtitle_font = st.selectbox(
             "فونت زیرنویس:",
-            ["vazirmatn", "vazir", "Arial", "Tahoma"],
-            index=0
+            ["vazirmatn", "Arial", "Arial Black", "Times New Roman", "Courier New", "Helvetica"],
+            index=0,
+            key="subtitle_font_select"
         )
-        subtitle_fontsize = st.number_input("اندازه فونت:", min_value=10, max_value=50, value=DEFAULT_SUBTITLE_FONTSIZE)
-        subtitle_color = st.selectbox("رنگ متن:", ["white", "black", "yellow", "red", "green"], index=1) # Default black
-    
+        
+        # اندازه فونت
+        subtitle_fontsize = st.number_input(
+            "اندازه فونت (px):",
+            min_value=8,
+            max_value=100,
+            value=DEFAULT_SUBTITLE_FONTSIZE,
+            key="subtitle_fontsize_input"
+        )
+        
+        # رنگ متن
+        colors_list = ["black", "white", "yellow", "red", "blue", "green", "cyan", "magenta"]
+        subtitle_color = st.selectbox(
+            "رنگ متن:",
+            colors_list,
+            index=colors_list.index(DEFAULT_SUBTITLE_COLOR) if DEFAULT_SUBTITLE_COLOR in colors_list else 0,
+            key="subtitle_color_select"
+        )
+        
+        # رنگ پس‌زمینه
+        bg_colors_list = ["none", "black", "white", "yellow", "red", "blue"]
+        subtitle_bg = st.selectbox(
+            "رنگ پس‌زمینه:",
+            bg_colors_list,
+            index=bg_colors_list.index(DEFAULT_SUBTITLE_BG_COLOR) if DEFAULT_SUBTITLE_BG_COLOR in bg_colors_list else 0,
+            key="subtitle_bg_color_select"
+        )
+        
+        # حاشیه و سایه
+        subtitle_outline_color = st.selectbox(
+            "رنگ حاشیه:",
+            ["white", "black", "yellow", "red", "blue", "green"],
+            index=0,
+            key="subtitle_outline_color_select"
+        )
+        subtitle_outline_width = st.number_input("ضخامت حاشیه (px):", min_value=0, max_value=10, value=DEFAULT_SUBTITLE_OUTLINE_WIDTH, key="subtitle_outline_width_input")
+
     with col_sub2:
-        subtitle_bg = st.selectbox("رنگ پس‌زمینه:", ["none", "black", "white", "blue"], index=0)
-        subtitle_pos = st.selectbox("موقعیت:", ["bottom_center", "top_center", "center"], index=0)
-        subtitle_margin = st.number_input("حاشیه عمودی:", min_value=0, max_value=200, value=DEFAULT_SUBTITLE_MARGIN_V)
+        # موقعیت
+        pos_list = ["bottom_center", "bottom_left", "bottom_right", "top_center", "top_left", "top_right"]
+        subtitle_pos = st.selectbox(
+            "موقعیت:",
+            pos_list,
+            index=pos_list.index(DEFAULT_SUBTITLE_POSITION) if DEFAULT_SUBTITLE_POSITION in pos_list else 0,
+            key="subtitle_position_select"
+        )
+        subtitle_margin = st.number_input("حاشیه عمودی:", min_value=0, max_value=200, value=DEFAULT_SUBTITLE_MARGIN_V, key="subtitle_margin_v_input")
+        
+        # سایه
+        subtitle_shadow = st.number_input("اندازه سایه:", min_value=0, max_value=10, value=DEFAULT_SUBTITLE_SHADOW, key="subtitle_shadow_input")
+        subtitle_shadow_color = st.selectbox("رنگ سایه:", ["black", "white", "gray"], index=0, key="subtitle_shadow_color_select")
+        
+        # استایل
+        col_style1, col_style2 = st.columns(2)
+        with col_style1:
+            subtitle_bold = st.checkbox("Bold (ضخیم)", value=DEFAULT_SUBTITLE_BOLD, key="subtitle_bold_check")
+        with col_style2:
+            subtitle_italic = st.checkbox("Italic (کج)", value=DEFAULT_SUBTITLE_ITALIC, key="subtitle_italic_check")
 
     st.markdown("---")
     st.markdown("### 🏷️ تنظیمات متن ثابت (واترمارک)")
-    fixed_enabled = st.checkbox("فعال‌سازی متن ثابت", value=DEFAULT_FIXED_ENABLED)
+    fixed_enabled = st.checkbox("فعال‌سازی متن ثابت", value=DEFAULT_FIXED_ENABLED, key="fixed_enabled_check")
     if fixed_enabled:
         col_fix1, col_fix2 = st.columns(2)
         with col_fix1:
-            fixed_text = st.text_input("متن:", value=DEFAULT_FIXED_TEXT)
-            fixed_font = st.selectbox("فونت متن ثابت:", ["vazirmatn", "Arial"], index=0)
-            fixed_size = st.number_input("اندازه فونت ثابت:", value=DEFAULT_FIXED_FONTSIZE)
+            fixed_text = st.text_input("متن:", value=DEFAULT_FIXED_TEXT, key="fixed_text_input")
+            fixed_font = st.selectbox("فونت متن ثابت:", ["vazirmatn", "Arial"], index=0, key="fixed_font_select")
+            fixed_size = st.number_input("اندازه فونت ثابت:", value=DEFAULT_FIXED_FONTSIZE, key="fixed_fontsize_input")
         with col_fix2:
-            fixed_pos = st.selectbox("موقعیت ثابت:", ["top_right", "top_left", "bottom_right", "bottom_left"], index=0)
-            fixed_color = st.selectbox("رنگ ثابت:", ["white", "yellow", "cyan"], index=0)
-            fixed_opacity = st.slider("شفافیت:", 0.0, 1.0, DEFAULT_FIXED_OPACITY)
+            fixed_pos = st.selectbox("موقعیت ثابت:", ["top_right", "top_left", "bottom_right", "bottom_left", "bottom_center"], index=4, key="fixed_position_select")
+            fixed_color = st.selectbox("رنگ ثابت:", ["white", "yellow", "cyan", "red", "green"], index=1, key="fixed_color_select")
+            fixed_opacity = st.slider("شفافیت:", 0.0, 1.0, DEFAULT_FIXED_OPACITY, key="fixed_opacity_slider")
+            
+            col_fix_style1, col_fix_style2 = st.columns(2)
+            with col_fix_style1:
+                fixed_bold = st.checkbox("Bold", value=DEFAULT_FIXED_BOLD, key="fixed_bold_check")
+            with col_fix_style2:
+                fixed_italic = st.checkbox("Italic", value=DEFAULT_FIXED_ITALIC, key="fixed_italic_check")
+            fixed_margin = st.number_input("حاشیه پایین:", value=DEFAULT_FIXED_MARGIN_BOTTOM, key="fixed_margin_input")
     else:
         fixed_text = DEFAULT_FIXED_TEXT
         fixed_font = DEFAULT_FIXED_FONT
@@ -266,6 +335,9 @@ with st.expander("⚙️ تنظیمات هوش مصنوعی (API Keys)", expande
         fixed_pos = DEFAULT_FIXED_POSITION
         fixed_color = DEFAULT_FIXED_COLOR
         fixed_opacity = DEFAULT_FIXED_OPACITY
+        fixed_bold = DEFAULT_FIXED_BOLD
+        fixed_italic = DEFAULT_FIXED_ITALIC
+        fixed_margin = DEFAULT_FIXED_MARGIN_BOTTOM
 
 # تنظیمات آپلود
 with st.expander("🌐 تنظیمات Object Storage", expanded=False):
@@ -375,8 +447,14 @@ if st.button("🚀 شروع پردازش و آپلود", type="primary", use_con
                 fontsize=subtitle_fontsize,
                 color=subtitle_color,
                 bg_color=subtitle_bg,
+                outline_color=subtitle_outline_color,
+                outline_width=subtitle_outline_width,
                 position=subtitle_pos,
-                margin_v=subtitle_margin
+                margin_v=subtitle_margin,
+                shadow=subtitle_shadow,
+                shadow_color=subtitle_shadow_color,
+                bold=subtitle_bold,
+                italic=subtitle_italic
             )
             
             fixed_text_config = create_fixed_text_config(
@@ -386,7 +464,11 @@ if st.button("🚀 شروع پردازش و آپلود", type="primary", use_con
                 fontsize=fixed_size,
                 position=fixed_pos,
                 color=fixed_color,
-                opacity=fixed_opacity
+                background_color="none" if fixed_color == "yellow" else DEFAULT_FIXED_BG_COLOR,
+                margin_bottom=fixed_margin,
+                opacity=fixed_opacity,
+                bold=fixed_bold,
+                italic=fixed_italic
             )
 
             # بررسی وجود و محتوای فایل زیرنویس قبل از استفاده
