@@ -90,6 +90,51 @@ DEFAULT_SUBTITLE_OUTLINE_WIDTH = 1
 DEFAULT_SUBTITLE_POSITION = "bottom_center"
 DEFAULT_SUBTITLE_MARGIN_V = 40
 
+# مقادیر پیش‌فرض متن ثابت (واترمارک)
+DEFAULT_FIXED_ENABLED = False
+DEFAULT_FIXED_TEXT = "ققنوس شانس"
+DEFAULT_FIXED_FONT = "vazirmatn"
+DEFAULT_FIXED_FONTSIZE = 16
+DEFAULT_FIXED_COLOR = "white"
+DEFAULT_FIXED_BG_COLOR = "black"
+DEFAULT_FIXED_POSITION = "top_right"
+DEFAULT_FIXED_MARGIN_BOTTOM = 20
+DEFAULT_FIXED_OPACITY = 0.7
+DEFAULT_FIXED_BOLD = True
+DEFAULT_FIXED_ITALIC = False
+
+# تابع کمکی برای ایجاد دیکشنری تنظیمات زیرنویس
+def create_subtitle_config(font=None, fontsize=None, color=None, bg_color=None, 
+                           outline_color=None, outline_width=None, position=None, margin_v=None):
+    return {
+        "font": font or DEFAULT_SUBTITLE_FONT,
+        "fontsize": fontsize or DEFAULT_SUBTITLE_FONTSIZE,
+        "color": color or DEFAULT_SUBTITLE_COLOR,
+        "background_color": bg_color or DEFAULT_SUBTITLE_BG_COLOR,
+        "outline_color": outline_color or DEFAULT_SUBTITLE_OUTLINE_COLOR,
+        "outline_width": outline_width or DEFAULT_SUBTITLE_OUTLINE_WIDTH,
+        "position": position or DEFAULT_SUBTITLE_POSITION,
+        "margin_v": margin_v or DEFAULT_SUBTITLE_MARGIN_V
+    }
+
+# تابع کمکی برای ایجاد دیکشنری تنظیمات متن ثابت
+def create_fixed_text_config(enabled=None, text=None, font=None, fontsize=None, color=None, 
+                             background_color=None, position=None, margin_bottom=None, 
+                             opacity=None, bold=None, italic=None):
+    return {
+        "enabled": enabled if enabled is not None else DEFAULT_FIXED_ENABLED,
+        "text": text or DEFAULT_FIXED_TEXT,
+        "font": font or DEFAULT_FIXED_FONT,
+        "fontsize": fontsize or DEFAULT_FIXED_FONTSIZE,
+        "color": color or DEFAULT_FIXED_COLOR,
+        "background_color": background_color or DEFAULT_FIXED_BG_COLOR,
+        "position": position or DEFAULT_FIXED_POSITION,
+        "margin_bottom": margin_bottom or DEFAULT_FIXED_MARGIN_BOTTOM,
+        "opacity": opacity if opacity is not None else DEFAULT_FIXED_OPACITY,
+        "bold": bold if bold is not None else DEFAULT_FIXED_BOLD,
+        "italic": italic if italic is not None else DEFAULT_FIXED_ITALIC
+    }
+
 # تابع برای ایجاد و مدیریت instance از کلاس دوبله در session state
 def init_dubbing_app():
     """ایجاد یا بروزرسانی instance از کلاس دوبله در session_state"""
@@ -182,6 +227,45 @@ with st.expander("⚙️ تنظیمات هوش مصنوعی (API Keys)", expande
                 else: st.error(f"❌ خطا: {res['message']}")
             else:
                 st.warning("⚠️ لطفا ابتدا اطلاعات Azure را وارد کنید")
+
+    st.markdown("---")
+    st.markdown("### 📝 تنظیمات زیرنویس")
+    
+    col_sub1, col_sub2 = st.columns(2)
+    with col_sub1:
+        subtitle_font = st.selectbox(
+            "فونت زیرنویس:",
+            ["vazirmatn", "vazir", "Arial", "Tahoma"],
+            index=0
+        )
+        subtitle_fontsize = st.number_input("اندازه فونت:", min_value=10, max_value=50, value=DEFAULT_SUBTITLE_FONTSIZE)
+        subtitle_color = st.selectbox("رنگ متن:", ["white", "black", "yellow", "red", "green"], index=1) # Default black
+    
+    with col_sub2:
+        subtitle_bg = st.selectbox("رنگ پس‌زمینه:", ["none", "black", "white", "blue"], index=0)
+        subtitle_pos = st.selectbox("موقعیت:", ["bottom_center", "top_center", "center"], index=0)
+        subtitle_margin = st.number_input("حاشیه عمودی:", min_value=0, max_value=200, value=DEFAULT_SUBTITLE_MARGIN_V)
+
+    st.markdown("---")
+    st.markdown("### 🏷️ تنظیمات متن ثابت (واترمارک)")
+    fixed_enabled = st.checkbox("فعال‌سازی متن ثابت", value=DEFAULT_FIXED_ENABLED)
+    if fixed_enabled:
+        col_fix1, col_fix2 = st.columns(2)
+        with col_fix1:
+            fixed_text = st.text_input("متن:", value=DEFAULT_FIXED_TEXT)
+            fixed_font = st.selectbox("فونت متن ثابت:", ["vazirmatn", "Arial"], index=0)
+            fixed_size = st.number_input("اندازه فونت ثابت:", value=DEFAULT_FIXED_FONTSIZE)
+        with col_fix2:
+            fixed_pos = st.selectbox("موقعیت ثابت:", ["top_right", "top_left", "bottom_right", "bottom_left"], index=0)
+            fixed_color = st.selectbox("رنگ ثابت:", ["white", "yellow", "cyan"], index=0)
+            fixed_opacity = st.slider("شفافیت:", 0.0, 1.0, DEFAULT_FIXED_OPACITY)
+    else:
+        fixed_text = DEFAULT_FIXED_TEXT
+        fixed_font = DEFAULT_FIXED_FONT
+        fixed_size = DEFAULT_FIXED_FONTSIZE
+        fixed_pos = DEFAULT_FIXED_POSITION
+        fixed_color = DEFAULT_FIXED_COLOR
+        fixed_opacity = DEFAULT_FIXED_OPACITY
 
 # تنظیمات آپلود
 with st.expander("🌐 تنظیمات Object Storage", expanded=False):
@@ -286,19 +370,25 @@ if st.button("🚀 شروع پردازش و آپلود", type="primary", use_con
 
         # 4) ایجاد ویدیو
         with st.spinner("🎬 ساخت ویدیو..."):
-            subtitle_config = {
-                "font": DEFAULT_SUBTITLE_FONT,
-                "fontsize": DEFAULT_SUBTITLE_FONTSIZE,
-                "color": DEFAULT_SUBTITLE_COLOR,
-                "background_color": DEFAULT_SUBTITLE_BG_COLOR,
-                "outline_color": DEFAULT_SUBTITLE_OUTLINE_COLOR,
-                "outline_width": DEFAULT_SUBTITLE_OUTLINE_WIDTH,
-                "position": DEFAULT_SUBTITLE_POSITION,
-                "margin_v": DEFAULT_SUBTITLE_MARGIN_V,
-                "shadow": 0,
-                "bold": True,
-                "italic": False
-            }
+            subtitle_config = create_subtitle_config(
+                font=subtitle_font,
+                fontsize=subtitle_fontsize,
+                color=subtitle_color,
+                bg_color=subtitle_bg,
+                position=subtitle_pos,
+                margin_v=subtitle_margin
+            )
+            
+            fixed_text_config = create_fixed_text_config(
+                enabled=fixed_enabled,
+                text=fixed_text,
+                font=fixed_font,
+                fontsize=fixed_size,
+                position=fixed_pos,
+                color=fixed_color,
+                opacity=fixed_opacity
+            )
+
             # بررسی وجود و محتوای فایل زیرنویس قبل از استفاده
             srt_fa = dubbing_app._srt_fa_path()
             if not srt_fa.exists() or srt_fa.stat().st_size < 10:
@@ -306,7 +396,10 @@ if st.button("🚀 شروع پردازش و آپلود", type="primary", use_con
                 results.append((url, "subtitle_invalid"))
                 continue
 
-            out = dubbing_app.create_subtitled_video(subtitle_config=subtitle_config)
+            out = dubbing_app.create_subtitled_video(
+                subtitle_config=subtitle_config,
+                fixed_text_config=fixed_text_config
+            )
             if not out or not os.path.exists(out):
                 results.append((url, "video_failed"))
                 continue
