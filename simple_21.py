@@ -323,25 +323,25 @@ if st.button("🚀 شروع پردازش و آپلود", type="primary", use_con
                     fa_srt_path = dubbing_app._srt_fa_path()
                     en_srt_path = dubbing_app._srt_en_path()
                     
-                    fa_srt_name = ""
-                    en_srt_name = ""
+                    fa_srt_url = ""
+                    en_srt_url = ""
                     
                     if fa_srt_path.exists():
                         fa_res = s3_uploader.upload_file(str(fa_srt_path), bucket_name=bucket_name)
                         if fa_res:
-                            fa_srt_name = os.path.basename(str(fa_srt_path))
+                            fa_srt_url = fa_res['url']
                     
                     if en_srt_path.exists():
                         en_res = s3_uploader.upload_file(str(en_srt_path), bucket_name=bucket_name)
                         if en_res:
-                            en_srt_name = os.path.basename(str(en_srt_path))
+                            en_srt_url = en_res['url']
                     
                     # ثبت در گوگل شیت
                     try:
                         logger = GoogleSheetsLogger()
-                        video_name = os.path.basename(out)
-                        logger.log_upload_triple(video_name, fa_srt_name, en_srt_name)
-                        st.success(f"✅ اطلاعات در گوگل شیت ثبت شد: {video_name}")
+                        mp4_url = s3_res['url']
+                        logger.log_upload_triple(mp4_url, fa_srt_url, en_srt_url)
+                        st.success("✅ لینک‌های هردو زیرنویس و ویدیو در گوگل شیت ثبت شد")
                     except Exception as e:
                         st.warning(f"⚠️ خطا در ثبت گوگل شیت: {e}")
                 
