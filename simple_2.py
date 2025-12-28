@@ -114,6 +114,11 @@ DEFAULT_FIXED_BOLD = False
 DEFAULT_FIXED_ITALIC = False
 DEFAULT_FIXED_ENABLED = True
 
+# تنظیمات وردپرس (XML-RPC)
+WP_URL = "https://cepmjgfj.us-west-1.clawcloudrun.com/"
+WP_USER = "admin"
+WP_PASS = "Fy)VLABpB6fyuXWK)Gtest"
+
 # تابع برای ایجاد تنظیمات زیرنویس
 def get_subtitle_config(
     font=None, fontsize=None, color=None, background_color=None,
@@ -493,6 +498,16 @@ with st.expander("⚙️ تنظیمات قابل تغییر", expanded=False):
         )
         st.session_state.fixed_bold = fixed_bold
 
+    st.markdown("---")
+    st.markdown("### 🌐 تنظیمات آپلود به وردپرس")
+    
+    upload_to_wp = st.checkbox(
+        "آپلود خودکار به وردپرس پس از اتمام پردازش",
+        value=True,
+        key="upload_to_wp_checkbox"
+    )
+    st.session_state.upload_to_wp = upload_to_wp
+
 # نمایش تنظیمات ثابت
 with st.expander("ℹ️ تنظیمات سیستم (غیرقابل تغییر)"):
     col1, col2 = st.columns(2)
@@ -670,6 +685,18 @@ if st.button("🚀 شروع پردازش", type="primary", use_container_width=T
                     use_container_width=True
                 )
             results.append((url, f"ok:{os.path.basename(out)}"))
+
+            # 5) آپلود به وردپرس (اگر فعال باشد)
+            if st.session_state.get('upload_to_wp', False):
+                with st.spinner("📡 در حال آپلود فایل‌ها به وردپرس..."):
+                    wp_results = dubbing_app.upload_to_wordpress(WP_URL, WP_USER, WP_PASS)
+                    if wp_results:
+                        st.success("✅ فایل‌ها با موفقیت به وردپرس منتقل شدند:")
+                        for fname, furl in wp_results.items():
+                            if furl:
+                                st.markdown(f"- **{fname}**: [مشاهده فایل]({furl})")
+                    else:
+                        st.warning("⚠️ آپلود به وردپرس با خطا مواجه شد یا فایلی برای آپلود یافت نشد.")
 
     ok = sum(1 for _, r in results if str(r).startswith("ok"))
     st.info(f"نتیجه نهایی: {ok}/{len(results)} موفق")

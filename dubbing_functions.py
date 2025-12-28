@@ -19,6 +19,8 @@ import pysrt
 import google.generativeai as genai
 from google.genai import types
 import google.genai as genai_client
+from wordpress_uploader import WordPressUploader
+from sheets_logger import GoogleSheetsLogger
 try:
     from pydub import AudioSegment
 except ImportError:
@@ -3726,3 +3728,61 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             "right": 6
         }
         return alignment_map.get(position.lower(), 2)  # پیش‌فرض: پایین وسط
+    def upload_to_wordpress(self, wp_url: str, wp_user: str, wp_pass: str) -> Dict[str, str]:
+        """
+        آپلود فایل‌های نهایی (دو فایل SRT و یک فایل MP4) به وردپرس
+        
+        Returns:
+            Dict[str, str]: آدرس فایل‌های آپلود شده
+        """
+        files_to_upload = []
+        
+        # 1) English SRT
+        en_srt = self._srt_en_path()
+        if en_srt.exists():
+            files_to_upload.append(str(en_srt))
+            
+        # 2) Persian SRT
+        fa_srt = self._srt_fa_path()
+        if fa_srt.exists():
+            files_to_upload.append(str(fa_srt))
+            
+        # 3) Final MP4
+        final_video = self._output_video_path()
+        if final_video.exists():
+            files_to_upload.append(str(final_video))
+            
+        if not files_to_upload:
+            print("⚠️ No files found to upload to WordPress")
+            return {}
+            
+        try:
+            uploader = WordPressUploader(wp_url, wp_user, wp_pass)
+            results = uploader.upload_batch(files_to_upload)
+            
+            # Log successful uploads to Google Sheets in a structured way (MP4, EN SRT, FA SRT)
+            try:
+                mp4_url = None
+                en_srt_url = None
+                fa_srt_url = None
+                
+                for filename, url in results.items():
+                    if not url:
+                        continue
+                    if filename.endswith('.mp4'):
+                        mp4_url = url
+                    elif filename.endswith('_fa.srt'):
+                        fa_srt_url = url
+                    elif filename.endswith('.srt'):
+                        en_srt_url = url
+                
+                if mp4_url or en_srt_url or fa_srt_url:
+                    logger = GoogleSheetsLogger()
+                    logger.log_upload_triple(mp4_url, en_srt_url, fa_srt_url)
+            except Exception as e:
+                print(f"⚠️ Google Sheets logging failed: {e}")
+                
+            return results
+        except Exception as e:
+            print(f"❌ WordPress Upload failed: {e}")
+            return {}
